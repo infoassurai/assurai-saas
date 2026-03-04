@@ -1,0 +1,19 @@
+{
+  "name": "assurai-saas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ASSURAI - AI-powered SaaS for insurance agents and brokers",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:web": "pnpm --filter @assurai/web dev",
+    "dev:api": "pnpm --filter @assurai/api dev",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter @assurai/web build",
+    "build:api": "pnpm --filter @assurai/api build"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  }
+}
