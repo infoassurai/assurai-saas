@@ -26,6 +26,7 @@ export interface ParsedPolicyData {
   policyNumber?: string
   policyType?: 'auto' | 'home' | 'life' | 'health' | 'other'
   productName?: string
+  plate?: string              // targa veicolo (auto)
   effectiveDate?: string
   expiryDate?: string
   premiumAmount?: number
@@ -147,8 +148,10 @@ function parseGeneraliPolicies(text: string): Array<Partial<ParsedPolicyData>> {
   let m
   while ((m = structuredRe.exec(text))) {
     foundContracts.add(m[2])
+    const { plate, cleanName } = extractPlateFromProduct(m[1].trim())
     policies.push({
-      productName: m[1].trim(),
+      productName: cleanName,
+      plate,
       policyNumber: m[2],
       effectiveDate: convertDateSlashToISO(m[3]),
       expiryDate: convertDateSlashToISO(m[4]),
@@ -162,8 +165,10 @@ function parseGeneraliPolicies(text: string): Array<Partial<ParsedPolicyData>> {
   while ((m = inlineRe.exec(text))) {
     if (foundContracts.has(m[3])) continue
     foundContracts.add(m[3])
+    const { plate, cleanName } = extractPlateFromProduct(m[2].trim())
     policies.push({
-      productName: m[2].trim(),
+      productName: cleanName,
+      plate,
       policyNumber: m[3],
       effectiveDate: convertDateSlashToISO(m[4]),
       expiryDate: convertDateSlashToISO(m[5]),
@@ -173,6 +178,16 @@ function parseGeneraliPolicies(text: string): Array<Partial<ParsedPolicyData>> {
   }
 
   return policies
+}
+
+// Estrae targa dal nome prodotto Generali (es. "EJ624BJ - Immagina Strade Nuove" → targa "EJ624BJ")
+function extractPlateFromProduct(productName: string): { plate?: string; cleanName: string } {
+  // Formato targa italiana: 2 lettere + 3-5 cifre + 0-2 lettere (es. EJ624BJ, HB649BC, DJ05863)
+  const plateMatch = productName.match(/^([A-Z]{2}\d{3,5}[A-Z]{0,2})\s*-\s*(.+)$/)
+  if (plateMatch) {
+    return { plate: plateMatch[1], cleanName: plateMatch[2].trim() }
+  }
+  return { cleanName: productName }
 }
 
 function inferGeneraliPolicyType(productName: string, fullText: string, contractNumber: string): 'auto' | 'home' | 'life' | 'health' | 'other' {
@@ -257,10 +272,9 @@ function parseAllianzPolicies(text: string): Array<Partial<ParsedPolicyData>> {
   const policies: Array<Partial<ParsedPolicyData>> = []
   const foundContracts = new Set<string>()
 
-  // Polizze attive: NUMERO   CONTRATTO   PTF   RAMO   -   PRODOTTO   PREMIO   €   SCADENZA
-  // NB: nel PDF Allianz tutti i campi sono separati da 3+ spazi (anche le parole nei nomi prodotto)
+  // Polizze attive: NUM   CONTRATTO   PTF   RAMO   -   PRODOTTO   PREMIO   €   SCADENZA   FRAZ   FONTE   [TARGA]   SDD
   // Il premio ha formato AMOUNT   € (€ DOPO il numero) mentre i Preventivi hanno €   AMOUNT (€ PRIMA)
-  const policyRe = /\d+\s{3,}(\d{6,})\s{3,}[A-Z]\s{3,}(\d{3})\s{3,}-\s{3,}(.*?)\s{3,}([\d.,]+)\s{3,}€\s{3,}(\d{2}-\d{2}-\d{4})/g
+  const policyRe = /\d+\s{3,}(\d{6,})\s{3,}[A-Z]\s{3,}(\d{3})\s{3,}-\s{3,}(.*?)\s{3,}([\d.,]+)\s{3,}€\s{3,}(\d{2}-\d{2}-\d{4})\s{3,}[A-Z]\s{3,}\d+(?:\s{3,}([A-Z][A-Z0-9]{4,7}))?\s{3,}(?:NO|SI)/g
   let m
   while ((m = policyRe.exec(text))) {
     if (foundContracts.has(m[1])) continue
@@ -269,6 +283,7 @@ function parseAllianzPolicies(text: string): Array<Partial<ParsedPolicyData>> {
     policies.push({
       policyNumber: m[1],
       productName,
+      plate: m[6] || undefined,
       premiumAmount: parseItalianNumber(m[4]),
       expiryDate: convertDateDashToISO(m[5]),
       policyType: inferAllianzPolicyType(m[2], productName),

@@ -169,7 +169,7 @@ export default function UploadPage() {
         effective_date: item.parsed.effectiveDate || new Date().toISOString().split('T')[0],
         expiry_date: item.parsed.expiryDate || new Date().toISOString().split('T')[0],
         company_id: companyId,
-        notes: `Importata da PDF - ${item.parsed.companyName || 'N/D'} - ${item.parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${item.parsed.productName ? ` - ${item.parsed.productName}` : ''}`,
+        notes: `Importata da PDF - ${item.parsed.companyName || 'N/D'} - ${item.parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${item.parsed.productName ? ` - ${item.parsed.productName}` : ''}${item.parsed.plate ? ` - Targa: ${item.parsed.plate}` : ''}`,
       })
 
       if (item.docId && policy) {
@@ -344,6 +344,8 @@ export default function UploadPage() {
                       onChange={(v) => updateParsedField(currentItem.id, 'productName', v)} inputClass={inputClass} />
                     <Field label="N. Contratto" value={currentItem.parsed.policyNumber ?? ''}
                       onChange={(v) => updateParsedField(currentItem.id, 'policyNumber', v)} inputClass={inputClass} />
+                    <Field label="Targa" value={currentItem.parsed.plate ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'plate', v)} inputClass={inputClass} />
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Tipo</label>
                       <select
