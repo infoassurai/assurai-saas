@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { uploadDocument, createPolicy, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy } from '@/lib/database'
 import { parsePolicyPDF, type ParsedPolicyData } from '@/lib/pdfParser'
 
+
 interface ParsedItem {
   id: string
   fileName: string
@@ -64,29 +65,48 @@ export default function UploadPage() {
     const newItems: ParsedItem[] = []
 
     for (const file of pdfFiles) {
-      const item: ParsedItem = {
-        id: crypto.randomUUID(),
-        fileName: file.name,
-        docId: null,
-        parsed: null,
-        status: 'pending',
-        saving: false,
-      }
+      let docId: string | null = null
+      let parsedResults: ParsedPolicyData[] = []
+      let error: string | undefined
 
       try {
-        item.parsed = await parsePolicyPDF(file)
+        parsedResults = await parsePolicyPDF(file)
       } catch {
-        item.error = 'Impossibile leggere il PDF'
+        error = 'Impossibile leggere il PDF'
       }
 
       try {
         const doc = await uploadDocument(file)
-        item.docId = doc.id
+        docId = doc.id
       } catch (err: any) {
-        item.error = err.message || 'Errore upload'
+        error = err.message || 'Errore upload'
       }
 
-      newItems.push(item)
+      if (parsedResults.length === 0) {
+        newItems.push({
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          docId,
+          parsed: null,
+          status: 'pending',
+          saving: false,
+          error,
+        })
+      } else {
+        for (let i = 0; i < parsedResults.length; i++) {
+          newItems.push({
+            id: crypto.randomUUID(),
+            fileName: parsedResults.length > 1
+              ? `${file.name} (polizza ${i + 1}/${parsedResults.length})`
+              : file.name,
+            docId,
+            parsed: parsedResults[i],
+            status: 'pending',
+            saving: false,
+            error,
+          })
+        }
+      }
     }
 
     setItems(prev => [...prev, ...newItems])
