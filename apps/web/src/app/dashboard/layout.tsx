@@ -8,6 +8,7 @@ import { signOut } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { globalSearch } from '@/lib/database'
+import Logo from '@/components/Logo'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
@@ -77,7 +78,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-primary-600">ASSURAI</h1>
+          <Logo size="md" />
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden text-gray-400 hover:text-gray-600"

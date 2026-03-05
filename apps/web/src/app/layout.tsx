@@ -4,8 +4,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'ASSURAI - Insurance SaaS',
-  description: 'AI-powered platform for insurance agents',
+  title: 'ASSURAI - Gestione Polizze con AI',
+  description: 'Piattaforma AI per agenti e broker assicurativi',
 }
 
 export default function RootLayout({

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signUp } from '@/lib/auth'
+import Logo from '@/components/Logo'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -33,7 +34,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary-600">ASSURAI</h1>
+          <Logo size="lg" />
           <p className="text-gray-500 mt-2">Crea il tuo account</p>
         </div>
 
