@@ -1,14 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { uploadDocument, getDocuments, createPolicy, getDocumentSignedUrl, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy } from '@/lib/database'
+import { uploadDocument, createPolicy, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy } from '@/lib/database'
 import { parsePolicyPDF, type ParsedPolicyData } from '@/lib/pdfParser'
 
 export default function UploadPage() {
   const router = useRouter()
-  const [documents, setDocuments] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -19,19 +17,6 @@ export default function UploadPage() {
   // Dati estratti dal PDF
   const [parsedData, setParsedData] = useState<ParsedPolicyData | null>(null)
   const [saving, setSaving] = useState(false)
-
-  const loadDocuments = async () => {
-    try {
-      const data = await getDocuments()
-      setDocuments(data)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { loadDocuments() }, [])
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -64,7 +49,6 @@ export default function UploadPage() {
       const doc = await uploadDocument(file)
       setUploadedDocId(doc.id)
       setSuccess('File caricato con successo')
-      await loadDocuments()
     } catch (err: any) {
       setError(err.message || 'Errore durante il caricamento')
     } finally {
@@ -237,71 +221,6 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Lista documenti */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-800">Documenti Caricati</h3>
-        </div>
-        {loading ? (
-          <div className="p-8 text-center text-gray-400">Caricamento...</div>
-        ) : documents.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">Nessun documento caricato</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Nome File</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Polizza</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Dimensione</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Stato OCR</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Data</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">PDF</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {documents.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-900 font-medium">{doc.file_name}</td>
-                    <td className="px-4 py-3 text-gray-600">{doc.policies?.policy_number ?? '—'}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">
-                      {doc.file_size ? `${(doc.file_size / 1024).toFixed(0)} KB` : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        doc.ocr_status === 'completed' ? 'bg-green-100 text-green-700' :
-                        doc.ocr_status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                        doc.ocr_status === 'failed' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-500'
-                      }`}>
-                        {doc.ocr_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {new Date(doc.created_at).toLocaleDateString('it-IT')}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={async () => {
-                          try {
-                            const url = await getDocumentSignedUrl(doc.file_path)
-                            window.open(url, '_blank')
-                          } catch {
-                            alert('Impossibile aprire il file')
-                          }
-                        }}
-                        className="text-primary-600 hover:text-primary-800 font-medium text-xs hover:underline"
-                      >
-                        Apri
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   )
 }
