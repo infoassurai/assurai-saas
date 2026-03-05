@@ -38,7 +38,9 @@ export default function UploadPage() {
     rejected: items.filter(i => i.status === 'rejected').length,
   }
 
-  const currentItem = items[currentIndex] ?? null
+  const pendingItems = items.filter(i => i.status === 'pending')
+  const safeIndex = pendingItems.length > 0 ? Math.min(currentIndex, pendingItems.length - 1) : -1
+  const currentItem = safeIndex >= 0 ? pendingItems[safeIndex] : null
 
   const updateParsedField = (itemId: string, field: keyof ParsedPolicyData, value: any) => {
     setItems(prev => prev.map(i => {
@@ -87,11 +89,8 @@ export default function UploadPage() {
       newItems.push(item)
     }
 
-    setItems(prev => {
-      const firstNewIndex = prev.length
-      setCurrentIndex(firstNewIndex)
-      return [...prev, ...newItems]
-    })
+    setItems(prev => [...prev, ...newItems])
+    setCurrentIndex(0)
     setProcessing(false)
   }
 
@@ -154,7 +153,6 @@ export default function UploadPage() {
       }
 
       updateItem(item.id, { status: 'approved', saving: false })
-      goToNextPending(item.id)
     } catch (err: any) {
       updateItem(item.id, { error: err.message || 'Errore creazione polizza', saving: false })
     }
@@ -162,18 +160,6 @@ export default function UploadPage() {
 
   const handleReject = (item: ParsedItem) => {
     updateItem(item.id, { status: 'rejected' })
-    goToNextPending(item.id)
-  }
-
-  const goToNextPending = (currentId: string) => {
-    setItems(prev => {
-      const curIdx = prev.findIndex(x => x.id === currentId)
-      const nextIndex = prev.findIndex((i, idx) => idx > curIdx && i.status === 'pending')
-      if (nextIndex !== -1) {
-        setTimeout(() => setCurrentIndex(nextIndex), 100)
-      }
-      return prev
-    })
   }
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -183,7 +169,6 @@ export default function UploadPage() {
   }, [])
 
   const inputClass = "w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-  const readonlyClass = "w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500"
 
   return (
     <div>
@@ -240,38 +225,33 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Navigazione + Card dati editabili */}
-      {items.length > 0 && currentItem && (
+      {/* Card dati editabili - solo item pending */}
+      {currentItem && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
           {/* Header navigazione */}
           <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
-                disabled={currentIndex === 0}
-                className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-              </button>
-              <span className="text-sm text-gray-600 font-medium">{currentIndex + 1} / {items.length}</span>
-              <button
-                onClick={() => setCurrentIndex(Math.min(items.length - 1, currentIndex + 1))}
-                disabled={currentIndex === items.length - 1}
-                className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 truncate max-w-[200px]">{currentItem.fileName}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                currentItem.status === 'approved' ? 'bg-green-100 text-green-700' :
-                currentItem.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                'bg-amber-100 text-amber-700'
-              }`}>
-                {currentItem.status === 'approved' ? 'Approvato' : currentItem.status === 'rejected' ? 'Rifiutato' : 'In attesa'}
-              </span>
-            </div>
+            {pendingItems.length > 1 ? (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setCurrentIndex(Math.max(0, safeIndex - 1))}
+                  disabled={safeIndex <= 0}
+                  className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                </button>
+                <span className="text-sm text-gray-600 font-medium">{safeIndex + 1} / {pendingItems.length} da approvare</span>
+                <button
+                  onClick={() => setCurrentIndex(Math.min(pendingItems.length - 1, safeIndex + 1))}
+                  disabled={safeIndex >= pendingItems.length - 1}
+                  className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+                </button>
+              </div>
+            ) : (
+              <span className="text-sm text-gray-600 font-medium">1 da approvare</span>
+            )}
+            <span className="text-sm text-gray-500 truncate max-w-[250px]">{currentItem.fileName}</span>
           </div>
 
           {currentItem.error && (
@@ -285,20 +265,20 @@ export default function UploadPage() {
                 <div>
                   <h4 className="text-sm font-semibold text-gray-600 mb-3 uppercase tracking-wide">Dati Cliente</h4>
                   <div className="space-y-3">
-                    <Field label="Nome" value={currentItem.parsed.clientName ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientName', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Data Nascita" value={currentItem.parsed.clientBirthDate ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientBirthDate', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Codice Fiscale" value={currentItem.parsed.clientFiscalCode ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientFiscalCode', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Email" value={currentItem.parsed.clientEmail ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientEmail', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Telefono" value={currentItem.parsed.clientPhone ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientPhone', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Indirizzo" value={currentItem.parsed.clientAddress ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientAddress', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Professione" value={currentItem.parsed.clientProfession ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientProfession', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
+                    <Field label="Nome" value={currentItem.parsed.clientName ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientName', v)} inputClass={inputClass} />
+                    <Field label="Data Nascita" value={currentItem.parsed.clientBirthDate ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientBirthDate', v)} inputClass={inputClass} />
+                    <Field label="Codice Fiscale" value={currentItem.parsed.clientFiscalCode ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientFiscalCode', v)} inputClass={inputClass} />
+                    <Field label="Email" value={currentItem.parsed.clientEmail ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientEmail', v)} inputClass={inputClass} />
+                    <Field label="Telefono" value={currentItem.parsed.clientPhone ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientPhone', v)} inputClass={inputClass} />
+                    <Field label="Indirizzo" value={currentItem.parsed.clientAddress ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientAddress', v)} inputClass={inputClass} />
+                    <Field label="Professione" value={currentItem.parsed.clientProfession ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientProfession', v)} inputClass={inputClass} />
                   </div>
                 </div>
 
@@ -306,67 +286,57 @@ export default function UploadPage() {
                 <div>
                   <h4 className="text-sm font-semibold text-gray-600 mb-3 uppercase tracking-wide">Dati Polizza</h4>
                   <div className="space-y-3">
-                    <Field label="Compagnia" value={currentItem.parsed.companyName ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'companyName', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Prodotto" value={currentItem.parsed.productName ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'productName', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="N. Contratto" value={currentItem.parsed.policyNumber ?? ''} editable={currentItem.status === 'pending'}
-                      onChange={(v) => updateParsedField(currentItem.id, 'policyNumber', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
+                    <Field label="Compagnia" value={currentItem.parsed.companyName ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'companyName', v)} inputClass={inputClass} />
+                    <Field label="Prodotto" value={currentItem.parsed.productName ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'productName', v)} inputClass={inputClass} />
+                    <Field label="N. Contratto" value={currentItem.parsed.policyNumber ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'policyNumber', v)} inputClass={inputClass} />
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Tipo</label>
-                      {currentItem.status === 'pending' ? (
-                        <select
-                          value={currentItem.parsed.policyType ?? 'other'}
-                          onChange={(e) => updateParsedField(currentItem.id, 'policyType', e.target.value)}
-                          className={inputClass}
-                        >
-                          {policyTypeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      ) : (
-                        <input readOnly value={policyTypeOptions.find(o => o.value === currentItem.parsed!.policyType)?.label ?? currentItem.parsed.policyType ?? ''} className={readonlyClass} />
-                      )}
+                      <select
+                        value={currentItem.parsed.policyType ?? 'other'}
+                        onChange={(e) => updateParsedField(currentItem.id, 'policyType', e.target.value)}
+                        className={inputClass}
+                      >
+                        {policyTypeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
                     </div>
-                    <Field label="Decorrenza" value={currentItem.parsed.effectiveDate ?? ''} editable={currentItem.status === 'pending'} type="date"
-                      onChange={(v) => updateParsedField(currentItem.id, 'effectiveDate', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
-                    <Field label="Scadenza" value={currentItem.parsed.expiryDate ?? ''} editable={currentItem.status === 'pending'} type="date"
-                      onChange={(v) => updateParsedField(currentItem.id, 'expiryDate', v)} inputClass={currentItem.status === 'pending' ? inputClass : readonlyClass} />
+                    <Field label="Decorrenza" value={currentItem.parsed.effectiveDate ?? ''} type="date"
+                      onChange={(v) => updateParsedField(currentItem.id, 'effectiveDate', v)} inputClass={inputClass} />
+                    <Field label="Scadenza" value={currentItem.parsed.expiryDate ?? ''} type="date"
+                      onChange={(v) => updateParsedField(currentItem.id, 'expiryDate', v)} inputClass={inputClass} />
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Premio (€)</label>
-                      {currentItem.status === 'pending' ? (
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={currentItem.parsed.premiumAmount ?? ''}
-                          onChange={(e) => updateParsedField(currentItem.id, 'premiumAmount', e.target.value ? parseFloat(e.target.value) : null)}
-                          className={inputClass}
-                        />
-                      ) : (
-                        <input readOnly value={currentItem.parsed.premiumAmount != null ? `€ ${currentItem.parsed.premiumAmount.toLocaleString('it-IT', { minimumFractionDigits: 2 })}` : '—'} className={readonlyClass} />
-                      )}
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={currentItem.parsed.premiumAmount ?? ''}
+                        onChange={(e) => updateParsedField(currentItem.id, 'premiumAmount', e.target.value ? parseFloat(e.target.value) : null)}
+                        className={inputClass}
+                      />
                     </div>
                   </div>
                 </div>
               </div>
 
-              {currentItem.status === 'pending' && (
-                <div className="mt-5 pt-4 border-t border-gray-100 flex gap-3">
-                  <button
-                    onClick={() => handleApprove(currentItem)}
-                    disabled={currentItem.saving}
-                    className="bg-primary-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition disabled:opacity-50"
-                  >
-                    {currentItem.saving ? 'Creazione...' : 'Approva e Crea Polizza'}
-                  </button>
-                  <button
-                    onClick={() => handleReject(currentItem)}
-                    disabled={currentItem.saving}
-                    className="px-5 py-2.5 rounded-lg text-sm font-medium text-red-600 border border-red-300 hover:bg-red-50 transition disabled:opacity-50"
-                  >
-                    Rifiuta
-                  </button>
-                </div>
-              )}
+              <div className="mt-5 pt-4 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => handleApprove(currentItem)}
+                  disabled={currentItem.saving}
+                  className="bg-primary-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition disabled:opacity-50"
+                >
+                  {currentItem.saving ? 'Creazione...' : 'Approva e Crea Polizza'}
+                </button>
+                <button
+                  onClick={() => handleReject(currentItem)}
+                  disabled={currentItem.saving}
+                  className="px-5 py-2.5 rounded-lg text-sm font-medium text-red-600 border border-red-300 hover:bg-red-50 transition disabled:opacity-50"
+                >
+                  Rifiuta
+                </button>
+              </div>
             </>
           ) : (
             <div className="text-center py-8 text-gray-400">
@@ -381,28 +351,33 @@ export default function UploadPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h4 className="text-sm font-semibold text-gray-700 mb-3">Tutti i documenti</h4>
           <div className="flex flex-wrap gap-2">
-            {items.map((item, idx) => (
-              <button
-                key={item.id}
-                onClick={() => setCurrentIndex(idx)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                  idx === currentIndex
-                    ? 'border-primary-500 bg-primary-50 text-primary-700'
-                    : item.status === 'approved'
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : item.status === 'rejected'
-                    ? 'border-red-200 bg-red-50 text-red-600'
-                    : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${
-                  item.status === 'approved' ? 'bg-green-500' :
-                  item.status === 'rejected' ? 'bg-red-500' :
-                  'bg-amber-400'
-                }`} />
-                {item.fileName.length > 20 ? item.fileName.slice(0, 17) + '...' : item.fileName}
-              </button>
-            ))}
+            {items.map((item) => {
+              const isPending = item.status === 'pending'
+              const pendingIdx = pendingItems.findIndex(p => p.id === item.id)
+              const isActive = currentItem?.id === item.id
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => isPending && pendingIdx >= 0 && setCurrentIndex(pendingIdx)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                    isActive
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : item.status === 'approved'
+                      ? 'border-green-200 bg-green-50 text-green-700'
+                      : item.status === 'rejected'
+                      ? 'border-red-200 bg-red-50 text-red-600'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  } ${isPending ? 'cursor-pointer' : 'cursor-default'}`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${
+                    item.status === 'approved' ? 'bg-green-500' :
+                    item.status === 'rejected' ? 'bg-red-500' :
+                    'bg-amber-400'
+                  }`} />
+                  {item.fileName.length > 20 ? item.fileName.slice(0, 17) + '...' : item.fileName}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -422,10 +397,9 @@ export default function UploadPage() {
   )
 }
 
-function Field({ label, value, editable, onChange, type = 'text', inputClass }: {
+function Field({ label, value, onChange, type = 'text', inputClass }: {
   label: string
   value: string
-  editable: boolean
   onChange: (v: string) => void
   type?: string
   inputClass: string
@@ -433,11 +407,7 @@ function Field({ label, value, editable, onChange, type = 'text', inputClass }: 
   return (
     <div>
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
-      {editable ? (
-        <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className={inputClass} />
-      ) : (
-        <input readOnly value={value || '—'} className={inputClass} />
-      )}
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className={inputClass} />
     </div>
   )
 }
