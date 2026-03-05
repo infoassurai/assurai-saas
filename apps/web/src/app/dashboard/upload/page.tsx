@@ -157,15 +157,19 @@ export default function UploadPage() {
       const policy = await createPolicy({
         policy_number: policyNumber,
         policy_type: item.parsed.policyType || 'other',
-        client_name: item.parsed.clientName || 'Sconosciuto',
+        client_name: item.parsed.clientType === 'azienda'
+          ? (item.parsed.clientCompanyName || item.parsed.clientName || 'Sconosciuto')
+          : (item.parsed.clientName || 'Sconosciuto'),
         client_email: item.parsed.clientEmail,
         client_phone: item.parsed.clientPhone,
-        client_fiscal_code: item.parsed.clientFiscalCode,
+        client_fiscal_code: item.parsed.clientType === 'azienda'
+          ? (item.parsed.clientVatNumber || item.parsed.clientFiscalCode)
+          : item.parsed.clientFiscalCode,
         premium_amount: item.parsed.premiumAmount || 0,
         effective_date: item.parsed.effectiveDate || new Date().toISOString().split('T')[0],
         expiry_date: item.parsed.expiryDate || new Date().toISOString().split('T')[0],
         company_id: companyId,
-        notes: `Importata da PDF - ${item.parsed.companyName || 'N/D'}${item.parsed.productName ? ` - ${item.parsed.productName}` : ''}`,
+        notes: `Importata da PDF - ${item.parsed.companyName || 'N/D'} - ${item.parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${item.parsed.productName ? ` - ${item.parsed.productName}` : ''}`,
       })
 
       if (item.docId && policy) {
@@ -285,10 +289,36 @@ export default function UploadPage() {
                 <div>
                   <h4 className="text-sm font-semibold text-gray-600 mb-3 uppercase tracking-wide">Dati Cliente</h4>
                   <div className="space-y-3">
-                    <Field label="Nome" value={currentItem.parsed.clientName ?? ''}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Tipo Cliente</label>
+                      <div className="flex gap-2">
+                        {(['persona', 'azienda'] as const).map(t => (
+                          <button key={t} type="button"
+                            onClick={() => updateParsedField(currentItem.id, 'clientType', t)}
+                            className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                              currentItem.parsed!.clientType === t
+                                ? 'border-primary-500 bg-primary-50 text-primary-700'
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}>
+                            {t === 'persona' ? 'Persona' : 'Azienda'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {currentItem.parsed!.clientType === 'azienda' && (
+                      <>
+                        <Field label="Ragione Sociale" value={currentItem.parsed.clientCompanyName ?? ''}
+                          onChange={(v) => updateParsedField(currentItem.id, 'clientCompanyName', v)} inputClass={inputClass} />
+                        <Field label="P.IVA" value={currentItem.parsed.clientVatNumber ?? ''}
+                          onChange={(v) => updateParsedField(currentItem.id, 'clientVatNumber', v)} inputClass={inputClass} />
+                      </>
+                    )}
+                    <Field label={currentItem.parsed!.clientType === 'azienda' ? 'Riferimento' : 'Nome'} value={currentItem.parsed.clientName ?? ''}
                       onChange={(v) => updateParsedField(currentItem.id, 'clientName', v)} inputClass={inputClass} />
-                    <Field label="Data Nascita" value={currentItem.parsed.clientBirthDate ?? ''}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientBirthDate', v)} inputClass={inputClass} />
+                    {currentItem.parsed!.clientType !== 'azienda' && (
+                      <Field label="Data Nascita" value={currentItem.parsed.clientBirthDate ?? ''}
+                        onChange={(v) => updateParsedField(currentItem.id, 'clientBirthDate', v)} inputClass={inputClass} />
+                    )}
                     <Field label="Codice Fiscale" value={currentItem.parsed.clientFiscalCode ?? ''}
                       onChange={(v) => updateParsedField(currentItem.id, 'clientFiscalCode', v)} inputClass={inputClass} />
                     <Field label="Email" value={currentItem.parsed.clientEmail ?? ''}
@@ -297,8 +327,10 @@ export default function UploadPage() {
                       onChange={(v) => updateParsedField(currentItem.id, 'clientPhone', v)} inputClass={inputClass} />
                     <Field label="Indirizzo" value={currentItem.parsed.clientAddress ?? ''}
                       onChange={(v) => updateParsedField(currentItem.id, 'clientAddress', v)} inputClass={inputClass} />
-                    <Field label="Professione" value={currentItem.parsed.clientProfession ?? ''}
-                      onChange={(v) => updateParsedField(currentItem.id, 'clientProfession', v)} inputClass={inputClass} />
+                    {currentItem.parsed!.clientType !== 'azienda' && (
+                      <Field label="Professione" value={currentItem.parsed.clientProfession ?? ''}
+                        onChange={(v) => updateParsedField(currentItem.id, 'clientProfession', v)} inputClass={inputClass} />
+                    )}
                   </div>
                 </div>
 

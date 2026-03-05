@@ -16,6 +16,11 @@ export interface ParsedPolicyData {
   clientGender?: string
   clientCode?: string
 
+  // Tipo cliente: persona fisica o azienda
+  clientType?: 'persona' | 'azienda'
+  clientCompanyName?: string  // ragione sociale (azienda)
+  clientVatNumber?: string    // P.IVA (azienda)
+
   // Dati polizza
   companyName?: string
   policyNumber?: string
@@ -29,7 +34,8 @@ export interface ParsedPolicyData {
   rawText?: string
 }
 
-// Estrae testo da tutte le pagine del PDF
+// ==================== TEXT EXTRACTION ====================
+
 async function extractText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
@@ -47,7 +53,29 @@ async function extractText(file: File): Promise<string> {
   return pages.join('\n\n')
 }
 
-// Estrae dati cliente dal formato Generali (condivisi tra tutte le polizze)
+// ==================== CLIENT TYPE DETECTION ====================
+
+function detectClientType(data: Partial<ParsedPolicyData>): 'persona' | 'azienda' {
+  if (data.clientVatNumber) return 'azienda'
+  if (data.clientFiscalCode && /^\d{11}$/.test(data.clientFiscalCode)) return 'azienda'
+  if (data.clientCompanyName) return 'azienda'
+  const name = data.clientName ?? ''
+  if (/\b(?:S\.?R\.?L\.?S?|S\.?P\.?A\.?|S\.?A\.?S\.?|S\.?N\.?C\.?|SOCIETA|DITTA|COOPERATIVA)\b/i.test(name)) return 'azienda'
+  return 'persona'
+}
+
+// ==================== FORMAT DETECTION ====================
+
+function isGeneraliFormat(text: string): boolean {
+  return /Generali\s*Italia/i.test(text) || /Copyright.*Generali/i.test(text)
+}
+
+function isAllianzFormat(text: string): boolean {
+  return /Allianz/i.test(text) && /Riepilogo\s+situazione\s+cliente/i.test(text)
+}
+
+// ==================== GENERALI PARSER ====================
+
 function parseGeneraliClient(text: string): Partial<ParsedPolicyData> {
   const data: Partial<ParsedPolicyData> = {
     companyName: 'Generali Italia',
@@ -60,9 +88,25 @@ function parseGeneraliClient(text: string): Partial<ParsedPolicyData> {
     data.clientBirthDate = nameMatch[2]
   }
 
-  // Codice Fiscale
+  // Codice Fiscale (persona: 16 alfanumerico)
   const cfMatch = text.match(/Codice\s*Fiscale\s*([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])/i)
   if (cfMatch) data.clientFiscalCode = cfMatch[1].toUpperCase()
+
+  // CF azienda (11 cifre)
+  if (!data.clientFiscalCode) {
+    const cfAzMatch = text.match(/Codice\s*Fiscale\s*(\d{11})/i)
+    if (cfAzMatch) data.clientFiscalCode = cfAzMatch[1]
+  }
+
+  // Partita IVA
+  const pivaMatch = text.match(/Partita\s*Iva\s*(\d{11})/i)
+  if (pivaMatch) data.clientVatNumber = pivaMatch[1]
+
+  // Tipologia Soggetto
+  const tipoMatch = text.match(/Tipologia\s*Soggetto\s*(FISICA|GIURIDICA)/i)
+  if (tipoMatch) {
+    data.clientType = tipoMatch[1].toUpperCase() === 'FISICA' ? 'persona' : 'azienda'
+  }
 
   // Codice Cliente
   const codClienteMatch = text.match(/Codice\s*Cliente\s*(\d+)/i)
@@ -88,15 +132,17 @@ function parseGeneraliClient(text: string): Partial<ParsedPolicyData> {
   const addrMatch = text.match(/(?:RESIDENZA|DOMICILIO)\s+((?:VIA|VIALE|PIAZZA|CORSO|LARGO|STRADA|VICOLO|CONTRADA)[^,]+,\s*\d+[^,]*,\s*[A-ZÀ-Ú\s]+\([A-Z]{2}\)\s*\d{5})/i)
   if (addrMatch) data.clientAddress = titleCase(addrMatch[1])
 
+  // Auto-detect tipo se non trovato da Tipologia Soggetto
+  if (!data.clientType) data.clientType = detectClientType(data)
+
   return data
 }
 
-// Estrae TUTTE le polizze dal formato Generali (strutturate + inline)
 function parseGeneraliPolicies(text: string): Array<Partial<ParsedPolicyData>> {
   const policies: Array<Partial<ParsedPolicyData>> = []
   const foundContracts = new Set<string>()
 
-  // Pattern 1: Polizze strutturate con label Prodotto/Num. Contratto/Decorrenza/Scadenza/PA/PU
+  // Pattern 1: Polizze strutturate con label
   const structuredRe = /Prodotto\s+(.+?)\s+Num\.\s*Contratto\s+(\d+)\s+Decorrenza\s+(\d{2}\/\d{2}\/\d{4})\s+Scadenza\s+(\d{2}\/\d{2}\/\d{4}).+?PA\/PU\s+([\d.,]+)\s*€/g
   let m
   while ((m = structuredRe.exec(text))) {
@@ -104,16 +150,14 @@ function parseGeneraliPolicies(text: string): Array<Partial<ParsedPolicyData>> {
     policies.push({
       productName: m[1].trim(),
       policyNumber: m[2],
-      effectiveDate: convertDateToISO(m[3]),
-      expiryDate: convertDateToISO(m[4]),
+      effectiveDate: convertDateSlashToISO(m[3]),
+      expiryDate: convertDateSlashToISO(m[4]),
       premiumAmount: parseItalianNumber(m[5]),
-      policyType: inferPolicyType(m[1].trim(), text, m[2]),
+      policyType: inferGeneraliPolicyType(m[1].trim(), text, m[2]),
     })
   }
 
-  // Pattern 2: Polizze inline (righe senza label, campi separati da 3+ spazi)
-  // Formato: RAMO   PRODOTTO   N_CONTRATTO   DECORRENZA   SCADENZA   DATA_SC   STATO   PREMIO €
-  // (?<=\s) evita match falsi su numeri in timestamps (es. 09:56)
+  // Pattern 2: Polizze inline (3+ spazi come separatore)
   const inlineRe = /(?<=\s)(\d{1,2})\s{3,}(.{3,80}?)\s{3,}(\d{6,})\s{3,}(\d{2}\/\d{2}\/\d{4})\s{3,}(\d{2}\/\d{2}\/\d{4})\s{3,}\d{2}\/\d{2}\/\d{4}\s{3,}[A-Z]\s{3,}([\d.,]+)\s*€/g
   while ((m = inlineRe.exec(text))) {
     if (foundContracts.has(m[3])) continue
@@ -121,56 +165,133 @@ function parseGeneraliPolicies(text: string): Array<Partial<ParsedPolicyData>> {
     policies.push({
       productName: m[2].trim(),
       policyNumber: m[3],
-      effectiveDate: convertDateToISO(m[4]),
-      expiryDate: convertDateToISO(m[5]),
+      effectiveDate: convertDateSlashToISO(m[4]),
+      expiryDate: convertDateSlashToISO(m[5]),
       premiumAmount: parseItalianNumber(m[6]),
-      policyType: inferPolicyType(m[2].trim(), text, m[3]),
+      policyType: inferGeneraliPolicyType(m[2].trim(), text, m[3]),
     })
   }
 
   return policies
 }
 
-// Determina il tipo polizza dal nome prodotto e dal contesto sezione
-function inferPolicyType(productName: string, fullText: string, contractNumber: string): 'auto' | 'home' | 'life' | 'health' | 'other' {
+function inferGeneraliPolicyType(productName: string, fullText: string, contractNumber: string): 'auto' | 'home' | 'life' | 'health' | 'other' {
   const prod = productName.toUpperCase()
 
-  // Hints dal nome prodotto
   if (/(?:AUTO|STRADE|GENMAR|RC\s*AUTO|VEICOL|KASKO)/i.test(prod)) return 'auto'
   if (/(?:CASA|ABITAZ|IMMOBIL|CONDOMI)/i.test(prod)) return 'home'
   if (/(?:VITA|LUNGAVITA|FUTURO|PENSION|PREVIDENZ)/i.test(prod)) return 'life'
   if (/(?:SALUT|SANITAR|DENTAL|MEDIC)/i.test(prod)) return 'health'
 
-  // Fallback: contesto sezione nel testo
+  // Fallback: contesto sezione
   const contractPos = fullText.indexOf(contractNumber)
   if (contractPos >= 0) {
     const before = fullText.substring(Math.max(0, contractPos - 500), contractPos)
-    const autoIdx = Math.max(
-      before.lastIndexOf('Situazione contrattuale  Auto'),
-      before.lastIndexOf('Auto  Oggetto')
-    )
-    const dnaIdx = Math.max(
-      before.lastIndexOf('DNA  Oggetto'),
-      before.lastIndexOf('Danni No Auto')
-    )
-    const vitaIdx = Math.max(
-      before.lastIndexOf('VITA INDIVIDUALI'),
-      before.lastIndexOf('Vita  Oggetto')
-    )
-
-    const closest = [
-      { type: 'auto' as const, pos: autoIdx },
-      { type: 'home' as const, pos: dnaIdx },
-      { type: 'life' as const, pos: vitaIdx },
+    const positions = [
+      { type: 'auto' as const, pos: Math.max(before.lastIndexOf('Situazione contrattuale  Auto'), before.lastIndexOf('Auto  Oggetto')) },
+      { type: 'home' as const, pos: Math.max(before.lastIndexOf('DNA  Oggetto'), before.lastIndexOf('Danni No Auto')) },
+      { type: 'life' as const, pos: Math.max(before.lastIndexOf('VITA INDIVIDUALI'), before.lastIndexOf('Vita  Oggetto')) },
     ].filter(p => p.pos >= 0).sort((a, b) => b.pos - a.pos)
 
-    if (closest.length > 0) return closest[0].type
+    if (positions.length > 0) return positions[0].type
   }
 
   return 'other'
 }
 
-// Parser generico per PDF non-Generali
+// ==================== ALLIANZ PARSER ====================
+
+function parseAllianzClient(text: string): Partial<ParsedPolicyData> {
+  const data: Partial<ParsedPolicyData> = {
+    companyName: 'Allianz',
+  }
+
+  // Nome cliente / Ragione sociale: tra "Resoconto...cliente" e "Agenzia"
+  const nameMatch = text.match(/Resoconto\s+assicurativo\s+del\s+cliente\s+(.+?)\s+Agenzia/i)
+  if (nameMatch) {
+    const name = normalizeSpaces(nameMatch[1])
+    if (/\b(?:S\.?R\.?L\.?S?|S\.?P\.?A\.?|S\.?A\.?S\.?|S\.?N\.?C\.?|SOCIETA|DITTA|COOPERATIVA)\b/i.test(name)) {
+      data.clientCompanyName = name
+      data.clientType = 'azienda'
+    } else {
+      data.clientName = name
+    }
+  }
+
+  // P.IVA + Codice Fiscale (spesso coincidono per aziende)
+  const pivaCfMatch = text.match(/P\.?\s*Iva\s*[-–]\s*Cod\.?\s*Fisc[.:]?\s*(\d{11})/i)
+  if (pivaCfMatch) {
+    data.clientVatNumber = pivaCfMatch[1]
+    data.clientFiscalCode = pivaCfMatch[1]
+    data.clientType = 'azienda'
+  }
+
+  // CF persona (16 caratteri alfanumerici) — fallback se non trovato prima
+  if (!data.clientFiscalCode) {
+    const cfMatch = text.match(/Cod\.?\s*Fisc[.:]?\s*([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])/i)
+    if (cfMatch) {
+      data.clientFiscalCode = cfMatch[1].toUpperCase()
+      if (!data.clientType) data.clientType = 'persona'
+    }
+  }
+
+  // Email
+  const emailMatch = text.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i)
+  if (emailMatch) data.clientEmail = emailMatch[1].toLowerCase()
+
+  // Indirizzo (formato con CAP e provincia)
+  const addrMatch = text.match(/((?:VIA|VIALE|PIAZZA|CORSO|LARGO|STRADA)\s+.+?\d+[^,]*,\s*\d{5}\s+[A-ZÀ-Ú\s]+\([A-Z]{2}\))/i)
+  if (addrMatch) data.clientAddress = normalizeSpaces(addrMatch[1])
+
+  // Telefono
+  const phoneMatch = text.match(/(?:Mobile|Cellulare|Telefono)[:\s]+(?:\+?39\s*)?(\d[\d\s]{8,})/i)
+  if (phoneMatch) data.clientPhone = phoneMatch[1].replace(/\s/g, '')
+
+  // Auto-detect tipo
+  if (!data.clientType) data.clientType = detectClientType(data)
+
+  return data
+}
+
+function parseAllianzPolicies(text: string): Array<Partial<ParsedPolicyData>> {
+  const policies: Array<Partial<ParsedPolicyData>> = []
+  const foundContracts = new Set<string>()
+
+  // Polizze attive: NUMERO   CONTRATTO   PTF   RAMO   -   PRODOTTO   PREMIO   €   SCADENZA
+  // NB: nel PDF Allianz tutti i campi sono separati da 3+ spazi (anche le parole nei nomi prodotto)
+  // Il premio ha formato AMOUNT   € (€ DOPO il numero) mentre i Preventivi hanno €   AMOUNT (€ PRIMA)
+  const policyRe = /\d+\s{3,}(\d{6,})\s{3,}[A-Z]\s{3,}(\d{3})\s{3,}-\s{3,}(.*?)\s{3,}([\d.,]+)\s{3,}€\s{3,}(\d{2}-\d{2}-\d{4})/g
+  let m
+  while ((m = policyRe.exec(text))) {
+    if (foundContracts.has(m[1])) continue
+    foundContracts.add(m[1])
+    const productName = normalizeSpaces(m[3])
+    policies.push({
+      policyNumber: m[1],
+      productName,
+      premiumAmount: parseItalianNumber(m[4]),
+      expiryDate: convertDateDashToISO(m[5]),
+      policyType: inferAllianzPolicyType(m[2], productName),
+    })
+  }
+
+  return policies
+}
+
+function inferAllianzPolicyType(ramo: string, productName: string): 'auto' | 'home' | 'life' | 'health' | 'other' {
+  const prod = productName.toUpperCase()
+
+  // Ramo codes Allianz
+  if (ramo === '031' || /\b(?:AUTO|LITHIUM|VEICOL|KASKO|RC\b)/i.test(prod)) return 'auto'
+  if (ramo === '042' || /\b(?:SALUT|ULTRA\s*SALUT|SANITARI)/i.test(prod)) return 'health'
+  if (/\b(?:CASA|ABITAZ|CONDOMI)/i.test(prod)) return 'home'
+  if (/\b(?:VITA|PENSION|RISPARMIO|INVESTIMENT)/i.test(prod)) return 'life'
+
+  return 'other'
+}
+
+// ==================== GENERIC PARSER ====================
+
 function parseGeneric(text: string): Partial<ParsedPolicyData>[] {
   const data: Partial<ParsedPolicyData> = {}
 
@@ -179,6 +300,9 @@ function parseGeneric(text: string): Partial<ParsedPolicyData>[] {
 
   const cfMatch = text.match(/(?:C\.?F\.?|Codice\s*Fiscale)\s*[:\-]?\s*([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])/i)
   if (cfMatch) data.clientFiscalCode = cfMatch[1].toUpperCase()
+
+  const pivaMatch = text.match(/(?:P\.?\s*IVA|Partita\s*IVA)\s*[:\-]?\s*(\d{11})/i)
+  if (pivaMatch) data.clientVatNumber = pivaMatch[1]
 
   const emailMatch = text.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i)
   if (emailMatch) data.clientEmail = emailMatch[1].toLowerCase()
@@ -191,22 +315,20 @@ function parseGeneric(text: string): Partial<ParsedPolicyData>[] {
 
   const dates = text.match(/(\d{2}\/\d{2}\/\d{4})/g) ?? []
   if (dates.length >= 2) {
-    data.effectiveDate = convertDateToISO(dates[0]!)
-    data.expiryDate = convertDateToISO(dates[1]!)
+    data.effectiveDate = convertDateSlashToISO(dates[0]!)
+    data.expiryDate = convertDateSlashToISO(dates[1]!)
   }
 
   const amountMatch = text.match(/([\d.,]+)\s*€/i)
   if (amountMatch) data.premiumAmount = parseItalianNumber(amountMatch[1])
 
+  data.clientType = detectClientType(data)
+
   return [data]
 }
 
-// Rileva se è un PDF Generali
-function isGeneraliFormat(text: string): boolean {
-  return /Generali\s*Italia/i.test(text) || /Copyright.*Generali/i.test(text)
-}
+// ==================== ENTRY POINT ====================
 
-// Entry point principale — ritorna array di polizze (1 per singolo, N per multiplo)
 export async function parsePolicyPDF(file: File): Promise<ParsedPolicyData[]> {
   const rawText = await extractText(file)
 
@@ -223,19 +345,45 @@ export async function parsePolicyPDF(file: File): Promise<ParsedPolicyData[]> {
       ...pol,
       rawText,
     } as ParsedPolicyData))
-  } else {
-    const results = parseGeneric(rawText)
-    return results.map(r => ({ ...r, rawText } as ParsedPolicyData))
   }
+
+  if (isAllianzFormat(rawText)) {
+    const client = parseAllianzClient(rawText)
+    const policies = parseAllianzPolicies(rawText)
+
+    if (policies.length === 0) {
+      return [{ ...client, rawText } as ParsedPolicyData]
+    }
+
+    return policies.map(pol => ({
+      ...client,
+      ...pol,
+      rawText,
+    } as ParsedPolicyData))
+  }
+
+  // Fallback generico
+  const results = parseGeneric(rawText)
+  return results.map(r => ({ ...r, rawText } as ParsedPolicyData))
 }
 
-// Utility
+// ==================== UTILITIES ====================
+
 function titleCase(str: string): string {
   return str.toLowerCase().split(' ').filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
 }
 
-function convertDateToISO(ddmmyyyy: string): string {
+function normalizeSpaces(text: string): string {
+  return text.replace(/\s{2,}/g, ' ').trim()
+}
+
+function convertDateSlashToISO(ddmmyyyy: string): string {
   const [dd, mm, yyyy] = ddmmyyyy.split('/')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function convertDateDashToISO(ddmmyyyy: string): string {
+  const [dd, mm, yyyy] = ddmmyyyy.split('-')
   return `${yyyy}-${mm}-${dd}`
 }
 
