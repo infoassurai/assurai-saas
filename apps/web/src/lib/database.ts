@@ -707,3 +707,42 @@ export async function getPolicyStatusDistribution() {
   }
   return Object.entries(counts).map(([status, count]) => ({ status, count }))
 }
+
+// ============================================
+// TODOS
+// ============================================
+export async function getTodos() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('todos')
+    .select('*')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createTodo(text: string) {
+  const supabase = createClient()
+  const profile = await getProfile()
+  if (!profile) throw new Error('Profilo non trovato')
+
+  const { data, error } = await supabase
+    .from('todos')
+    .insert({ tenant_id: profile.tenant_id, text })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateTodo(id: string, updates: { text?: string; is_done?: boolean }) {
+  const supabase = createClient()
+  const { error } = await supabase.from('todos').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteTodo(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('todos').delete().eq('id', id)
+  if (error) throw error
+}
