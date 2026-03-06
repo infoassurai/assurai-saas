@@ -575,6 +575,32 @@ export async function linkDocumentToPolicy(documentId: string, policyId: string)
   if (error) throw error
 }
 
+export async function cloneDocumentForPolicy(originalDocId: string, policyId: string) {
+  const supabase = createClient()
+  const { data: original, error: fetchError } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('id', originalDocId)
+    .single()
+  if (fetchError || !original) throw fetchError || new Error('Documento non trovato')
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      tenant_id: original.tenant_id,
+      policy_id: policyId,
+      file_name: original.file_name,
+      file_path: original.file_path,
+      file_size: original.file_size,
+      mime_type: original.mime_type,
+      uploaded_by: original.uploaded_by,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function uploadDocument(file: File, policyId?: string) {
   const supabase = createClient()
   const profile = await getProfile()

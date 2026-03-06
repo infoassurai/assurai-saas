@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { uploadDocument, createPolicy, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy } from '@/lib/database'
+import { uploadDocument, createPolicy, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy, cloneDocumentForPolicy } from '@/lib/database'
 import { parsePolicyPDF, type ParsedPolicyData } from '@/lib/pdfParser'
 
 
@@ -38,6 +38,8 @@ export default function UploadPage() {
   const [processing, setProcessing] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [globalError, setGlobalError] = useState('')
+  const [approvingAll, setApprovingAll] = useState(false)
+  const linkedDocIds = useRef(new Set<string>())
 
   const counts = {
     total: items.length,
@@ -128,26 +130,37 @@ export default function UploadPage() {
     setItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i))
   }
 
-  const handleApprove = async (item: ParsedItem) => {
+  const handleApprove = async (item: ParsedItem, bulk = false) => {
     const parsed = item.parsed
     if (!parsed) return
 
-    // Scadenza mancante: alert bloccante con proposta 1 anno / 6 mesi
+    // Scadenza mancante
     if (!parsed.expiryDate) {
       const effDate = parsed.effectiveDate
       if (!effDate) {
+        if (bulk) {
+          updateItem(item.id, { error: 'Data di decorrenza e scadenza mancanti.' })
+          return
+        }
         updateItem(item.id, { error: 'Data di decorrenza e scadenza mancanti. Compilare manualmente.' })
         return
       }
-      const oneYear = addMonthsToDate(effDate, 12)
-      const choice = window.confirm(
-        `Data di scadenza non presente nel PDF.\n\nCalcolare 1 anno dalla decorrenza (${new Date(effDate).toLocaleDateString('it-IT')})?\n\nScadenza proposta: ${new Date(oneYear).toLocaleDateString('it-IT')}\n\nOK = 1 anno\nAnnulla = 6 mesi`
-      )
-      const expiryDate = choice
-        ? addMonthsToDate(effDate, 12)
-        : addMonthsToDate(effDate, 6)
-      updateParsedField(item.id, 'expiryDate', expiryDate)
-      parsed.expiryDate = expiryDate
+      if (bulk) {
+        // In approvazione massiva: default 1 anno
+        const expiryDate = addMonthsToDate(effDate, 12)
+        updateParsedField(item.id, 'expiryDate', expiryDate)
+        parsed.expiryDate = expiryDate
+      } else {
+        const oneYear = addMonthsToDate(effDate, 12)
+        const choice = window.confirm(
+          `Data di scadenza non presente nel PDF.\n\nCalcolare 1 anno dalla decorrenza (${new Date(effDate).toLocaleDateString('it-IT')})?\n\nScadenza proposta: ${new Date(oneYear).toLocaleDateString('it-IT')}\n\nOK = 1 anno\nAnnulla = 6 mesi`
+        )
+        const expiryDate = choice
+          ? addMonthsToDate(effDate, 12)
+          : addMonthsToDate(effDate, 6)
+        updateParsedField(item.id, 'expiryDate', expiryDate)
+        parsed.expiryDate = expiryDate
+      }
     }
 
     updateItem(item.id, { saving: true, error: undefined })
@@ -172,6 +185,11 @@ export default function UploadPage() {
       if (policyNumber !== 'DA_ASSEGNARE') {
         const duplicates = await checkDuplicatePolicy(policyNumber, companyId)
         if (duplicates.length > 0) {
+          if (bulk) {
+            // In bulk: salta i duplicati
+            updateItem(item.id, { error: `Duplicato: polizza "${policyNumber}" già esistente`, saving: false })
+            return
+          }
           const dup = duplicates[0]
           const dupCompany = (dup as any).insurance_companies?.name || 'N/D'
           const confirmed = window.confirm(
@@ -205,7 +223,12 @@ export default function UploadPage() {
       })
 
       if (item.docId && policy) {
-        await linkDocumentToPolicy(item.docId, policy.id)
+        if (linkedDocIds.current.has(item.docId)) {
+          await cloneDocumentForPolicy(item.docId, policy.id)
+        } else {
+          await linkDocumentToPolicy(item.docId, policy.id)
+          linkedDocIds.current.add(item.docId)
+        }
       }
 
       updateItem(item.id, { status: 'approved', saving: false })
@@ -216,6 +239,17 @@ export default function UploadPage() {
 
   const handleReject = (item: ParsedItem) => {
     updateItem(item.id, { status: 'rejected' })
+  }
+
+  const handleApproveAll = async () => {
+    const toApprove = items.filter(i => i.status === 'pending' && i.parsed)
+    if (toApprove.length === 0) return
+    if (!window.confirm(`Approvare tutte le ${toApprove.length} polizze in attesa?\n\nScadenze mancanti verranno calcolate a 1 anno dalla decorrenza.\nI duplicati verranno saltati.`)) return
+    setApprovingAll(true)
+    for (const item of toApprove) {
+      await handleApprove(item, true)
+    }
+    setApprovingAll(false)
   }
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -279,6 +313,19 @@ export default function UploadPage() {
             <p className="text-xs text-gray-500">Rifiutati</p>
             <p className="text-xl font-bold text-red-500">{counts.rejected}</p>
           </div>
+        </div>
+      )}
+
+      {/* Approva tutte */}
+      {counts.pending > 1 && (
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={handleApproveAll}
+            disabled={approvingAll}
+            className="bg-green-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-green-700 transition disabled:opacity-50"
+          >
+            {approvingAll ? `Approvazione in corso...` : `Approva Tutte (${counts.pending})`}
+          </button>
         </div>
       )}
 
