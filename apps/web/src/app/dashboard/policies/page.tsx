@@ -88,7 +88,7 @@ export default function PoliciesPage() {
     const rows = policies.map(p => [
       p.policy_number,
       p.client_name,
-      clientTypeLabels[p.client_type] ?? 'N/D',
+      clientTypeLabels[p.client_type || (p.client_fiscal_code && /^\d{11}$/.test(p.client_fiscal_code) ? 'azienda' : 'persona')],
       typeLabels[p.policy_type] ?? p.policy_type,
       p.insurance_companies?.name ?? '',
       Number(p.premium_amount).toFixed(2),
@@ -219,9 +219,16 @@ export default function PoliciesPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-900">{p.client_name}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${clientTypeColors[p.client_type] ?? 'bg-gray-100 text-gray-500'}`}>
-                        {clientTypeLabels[p.client_type] ?? 'N/D'}
-                      </span>
+                      {(() => {
+                        // Derive client type: from DB column, or from fiscal code format
+                        const ct = p.client_type
+                          || (p.client_fiscal_code && /^\d{11}$/.test(p.client_fiscal_code) ? 'azienda' : 'persona')
+                        return (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${clientTypeColors[ct]}`}>
+                            {clientTypeLabels[ct]}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{typeLabels[p.policy_type] ?? p.policy_type}</td>
                     <td className="px-4 py-3 text-gray-600">{p.insurance_companies?.name ?? '—'}</td>
