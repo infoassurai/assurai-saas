@@ -97,7 +97,7 @@ export default function DashboardPage() {
         {statCards.map((stat) => {
           const isExpiring = stat.label === 'In Scadenza (30gg)'
           const Wrapper = isExpiring ? Link : 'div' as any
-          const wrapperProps = isExpiring ? { href: '/dashboard/alerts' } : {}
+          const wrapperProps = isExpiring ? { href: '/dashboard/scadenze' } : {}
           return (
             <Wrapper
               key={stat.label}

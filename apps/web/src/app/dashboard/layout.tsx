@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { globalSearch, getUnreadAlertCount } from '@/lib/database'
+import { globalSearch, getUnreadExpiryCount, getUnreadOtherAlertCount } from '@/lib/database'
 import Logo from '@/components/Logo'
 import pkg from '../../../package.json'
 
@@ -16,6 +16,7 @@ const navItems = [
   { href: '/dashboard/policies', label: 'Polizze', icon: '📋' },
   { href: '/dashboard/upload', label: 'Upload', icon: '📤' },
   { href: '/dashboard/commissions', label: 'Commissioni', icon: '💰' },
+  { href: '/dashboard/scadenze', label: 'Scadenze', icon: '⏰' },
   { href: '/dashboard/alerts', label: 'Alerts', icon: '🔔' },
   { href: '/dashboard/settings', label: 'Impostazioni', icon: '⚙️' },
 ]
@@ -30,10 +31,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>(null)
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [expiryCount, setExpiryCount] = useState(0)
+  const [alertCount, setAlertCount] = useState(0)
 
   useEffect(() => {
-    getUnreadAlertCount().then(setUnreadCount).catch(() => {})
+    getUnreadExpiryCount().then(setExpiryCount).catch(() => {})
+    getUnreadOtherAlertCount().then(setAlertCount).catch(() => {})
   }, [pathname])
 
   const doSearch = useCallback(async (q: string) => {
@@ -111,9 +114,14 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
               >
                 <span>{item.icon}</span>
                 {item.label}
-                {item.label === 'Alerts' && unreadCount > 0 && (
+                {item.label === 'Scadenze' && expiryCount > 0 && (
                   <span className="ml-auto bg-red-500 text-white text-xs font-bold min-w-[20px] h-5 flex items-center justify-center rounded-full px-1.5">
-                    {unreadCount > 99 ? '99+' : unreadCount}
+                    {expiryCount > 99 ? '99+' : expiryCount}
+                  </span>
+                )}
+                {item.label === 'Alerts' && alertCount > 0 && (
+                  <span className="ml-auto bg-orange-500 text-white text-xs font-bold min-w-[20px] h-5 flex items-center justify-center rounded-full px-1.5">
+                    {alertCount > 99 ? '99+' : alertCount}
                   </span>
                 )}
               </Link>

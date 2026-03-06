@@ -464,6 +464,82 @@ export async function getAlerts(showDismissed = false) {
   return data ?? []
 }
 
+export async function getExpiryAlerts(showDismissed = false) {
+  const supabase = createClient()
+  let query = supabase
+    .from('alerts')
+    .select('*, policies(policy_number, client_name)')
+    .eq('type', 'expiry')
+    .order('due_date', { ascending: true })
+
+  if (!showDismissed) query = query.eq('is_dismissed', false)
+
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getOtherAlerts(showDismissed = false) {
+  const supabase = createClient()
+  let query = supabase
+    .from('alerts')
+    .select('*, policies(policy_number, client_name)')
+    .neq('type', 'expiry')
+    .order('due_date', { ascending: true })
+
+  if (!showDismissed) query = query.eq('is_dismissed', false)
+
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getUnreadExpiryCount() {
+  const supabase = createClient()
+  const { count, error } = await supabase
+    .from('alerts')
+    .select('id', { count: 'exact', head: true })
+    .eq('type', 'expiry')
+    .eq('is_read', false)
+    .eq('is_dismissed', false)
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function getUnreadOtherAlertCount() {
+  const supabase = createClient()
+  const { count, error } = await supabase
+    .from('alerts')
+    .select('id', { count: 'exact', head: true })
+    .neq('type', 'expiry')
+    .eq('is_read', false)
+    .eq('is_dismissed', false)
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function markAllExpiryAlertsRead() {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('alerts')
+    .update({ is_read: true })
+    .eq('type', 'expiry')
+    .eq('is_read', false)
+    .eq('is_dismissed', false)
+  if (error) throw error
+}
+
+export async function markAllOtherAlertsRead() {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('alerts')
+    .update({ is_read: true })
+    .neq('type', 'expiry')
+    .eq('is_read', false)
+    .eq('is_dismissed', false)
+  if (error) throw error
+}
+
 export async function generateExpiryAlerts() {
   const supabase = createClient()
   const profile = await getProfile()
