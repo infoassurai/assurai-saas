@@ -552,11 +552,8 @@ export async function parsePolicyPDF(file: File): Promise<ParsedPolicyData[]> {
   }
 
   if (isAssimediciFormat(rawText)) {
-    console.log('[PARSER] Assimedici detected. Raw text (first 500):', rawText.substring(0, 500))
     const client = parseAssimediciClient(rawText)
-    console.log('[PARSER] Assimedici client:', JSON.stringify(client, null, 2))
     const policies = parseAssimediciPolicies(rawText)
-    console.log('[PARSER] Assimedici policies:', JSON.stringify(policies, null, 2))
 
     if (policies.length === 0) {
       return [{ ...client, rawText } as ParsedPolicyData]
