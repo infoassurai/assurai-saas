@@ -57,6 +57,7 @@ async function extractText(file: File): Promise<string> {
 // ==================== CLIENT TYPE DETECTION ====================
 
 function detectClientType(data: Partial<ParsedPolicyData>): 'persona' | 'azienda' {
+  // Regola: P.IVA compilata → azienda, solo CF → persona, entrambi → azienda
   if (data.clientVatNumber) return 'azienda'
   if (data.clientFiscalCode && /^\d{11}$/.test(data.clientFiscalCode)) return 'azienda'
   if (data.clientCompanyName) return 'azienda'
@@ -73,6 +74,10 @@ function isGeneraliFormat(text: string): boolean {
 
 function isAllianzFormat(text: string): boolean {
   return /Allianz/i.test(text) && /Riepilogo\s+situazione\s+cliente/i.test(text)
+}
+
+function isAssimediciFormat(text: string): boolean {
+  return /Assimedici/i.test(text) && /Dettaglio\s*Anagrafica/i.test(text)
 }
 
 // ==================== GENERALI PARSER ====================
@@ -103,7 +108,7 @@ function parseGeneraliClient(text: string): Partial<ParsedPolicyData> {
   const pivaMatch = text.match(/Partita\s*Iva\s*(\d{11})/i)
   if (pivaMatch) data.clientVatNumber = pivaMatch[1]
 
-  // Tipologia Soggetto
+  // Tipologia Soggetto (usata come fallback, P.IVA ha priorità)
   const tipoMatch = text.match(/Tipologia\s*Soggetto\s*(FISICA|GIURIDICA)/i)
   if (tipoMatch) {
     data.clientType = tipoMatch[1].toUpperCase() === 'FISICA' ? 'persona' : 'azienda'
@@ -133,8 +138,16 @@ function parseGeneraliClient(text: string): Partial<ParsedPolicyData> {
   const addrMatch = text.match(/(?:RESIDENZA|DOMICILIO)\s+((?:VIA|VIALE|PIAZZA|CORSO|LARGO|STRADA|VICOLO|CONTRADA)[^,]+,\s*\d+[^,]*,\s*[A-ZÀ-Ú\s]+\([A-Z]{2}\)\s*\d{5})/i)
   if (addrMatch) data.clientAddress = titleCase(addrMatch[1])
 
-  // Auto-detect tipo se non trovato da Tipologia Soggetto
-  if (!data.clientType) data.clientType = detectClientType(data)
+  // Regola uniforme: P.IVA compilata → azienda (override Tipologia Soggetto)
+  // Solo CF → persona, entrambi → azienda
+  if (data.clientVatNumber) {
+    data.clientType = 'azienda'
+    if (!data.clientCompanyName && data.clientName) {
+      data.clientCompanyName = data.clientName
+    }
+  } else if (!data.clientType) {
+    data.clientType = detectClientType(data)
+  }
 
   return data
 }
@@ -262,8 +275,16 @@ function parseAllianzClient(text: string): Partial<ParsedPolicyData> {
   const phoneMatch = text.match(/(?:Mobile|Cellulare|Telefono)[:\s]+(?:\+?39\s*)?(\d[\d\s]{8,})/i)
   if (phoneMatch) data.clientPhone = phoneMatch[1].replace(/\s/g, '')
 
-  // Auto-detect tipo
-  if (!data.clientType) data.clientType = detectClientType(data)
+  // Regola uniforme: P.IVA compilata → azienda (override)
+  // Solo CF → persona, entrambi → azienda
+  if (data.clientVatNumber) {
+    data.clientType = 'azienda'
+    if (!data.clientCompanyName && data.clientName) {
+      data.clientCompanyName = data.clientName
+    }
+  } else if (!data.clientType) {
+    data.clientType = detectClientType(data)
+  }
 
   return data
 }
@@ -305,6 +326,125 @@ function inferAllianzPolicyType(ramo: string, productName: string): 'auto' | 'ho
   return 'other'
 }
 
+// ==================== ASSIMEDICI PARSER ====================
+
+function parseAssimediciClient(text: string): Partial<ParsedPolicyData> {
+  const data: Partial<ParsedPolicyData> = {
+    companyName: 'Assimedici',
+  }
+
+  // Codice cliente (es. A202510290036)
+  const codeMatch = text.match(/\b(A\d{12,})\b/)
+  if (codeMatch) data.clientCode = codeMatch[1]
+
+  // Nome cliente: COGNOME NOME dopo il codice anagrafica (spazi multipli possibili)
+  const nameMatch = text.match(/A\d{12,}\s+([A-ZÀ-Ú]{2,}(?:\s+[A-ZÀ-Ú]{2,})+)/)
+  if (nameMatch) data.clientName = titleCase(normalizeSpaces(nameMatch[1]))
+
+  // Indirizzo: prendi solo il primo (quello del cliente, non della sezione Azienda)
+  // Testo: "Indirizzo: PALLAVICINO VIA VIVAIO 14  Città: CANTALUPO LIGURE..."
+  const addrMatch = text.match(/Indirizzo:\s*([A-ZÀ-Ú0-9][A-ZÀ-Ú0-9\s.,/]+?)(?=\s{2,}Citt[àa]:|Telefono:|$)/i)
+  if (addrMatch) {
+    const addr = normalizeSpaces(addrMatch[1])
+    if (addr && addr.length > 3) data.clientAddress = addr
+  }
+
+  // Città con CAP e provincia (primo match = cliente)
+  const cityMatch = text.match(/Citt[àa]:\s*([A-ZÀ-Ú\s]+?)\s*-\s*(\d{5})\s*-\s*([A-Z]{2})/i)
+  if (cityMatch) {
+    const existingAddr = data.clientAddress || ''
+    data.clientAddress = existingAddr
+      ? `${existingAddr}, ${normalizeSpaces(cityMatch[1])} ${cityMatch[2]} (${cityMatch[3]})`
+      : `${normalizeSpaces(cityMatch[1])} ${cityMatch[2]} (${cityMatch[3]})`
+  }
+
+  // Cellulare (priorità) o Telefono
+  const cellMatch = text.match(/Cellulare:\s*(\d{8,})/i)
+  if (cellMatch) {
+    data.clientPhone = cellMatch[1]
+  } else {
+    const telMatch = text.match(/Telefono:\s*(\d{8,})/i)
+    if (telMatch) data.clientPhone = telMatch[1]
+  }
+
+  // Email: può avere spazi/newline tra "Email:" e l'indirizzo
+  // Testo: "Email:  GIROLAMO.MAZZEO@YAHOO.IT"
+  const emailMatch = text.match(/Email:\s+([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i)
+  if (emailMatch) data.clientEmail = emailMatch[1].toLowerCase()
+
+  // Data di nascita
+  const birthMatch = text.match(/Data\s+di\s+nascita:\s*(\d{2}\/\d{2}\/\d{4})/i)
+  if (birthMatch) data.clientBirthDate = birthMatch[1]
+
+  // Codice Fiscale (16 caratteri alfanumerici persona)
+  const cfMatch = text.match(/Codice\s+Fiscale:\s*([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])/i)
+  if (cfMatch) data.clientFiscalCode = cfMatch[1].toUpperCase()
+
+  // Partita Iva
+  const pivaMatch = text.match(/Partita\s+Iva:\s*(\d{11})/i)
+  if (pivaMatch) data.clientVatNumber = pivaMatch[1]
+
+  // Attività / Professione
+  const attMatch = text.match(/Attivit[àa]:\s*(.+?)(?=\s{2,}Libero\s+Professionista|\s{2,}Azienda:)/i)
+  if (attMatch) {
+    const att = normalizeSpaces(attMatch[1])
+    if (att) data.clientProfession = att
+  }
+
+  // Regola tipo cliente:
+  // P.IVA compilata → azienda
+  // Solo CF compilato → persona
+  // Entrambi compilati → azienda
+  if (data.clientVatNumber) {
+    data.clientType = 'azienda'
+    if (!data.clientCompanyName && data.clientName) {
+      data.clientCompanyName = data.clientName
+    }
+  } else if (data.clientFiscalCode) {
+    data.clientType = 'persona'
+  } else {
+    data.clientType = 'persona'
+  }
+
+  return data
+}
+
+function parseAssimediciPolicies(text: string): Array<Partial<ParsedPolicyData>> {
+  const policies: Array<Partial<ParsedPolicyData>> = []
+  const foundContracts = new Set<string>()
+
+  // Pattern dal testo reale:
+  // "P202510290048   RC_MED_ABIL_NON_SPEC   30/09/2025   € 894,00"
+  // Separatori: spazi multipli (2+)
+  const policyRe = /(P\d{12,})\s{2,}(\S+(?:\s\S+)*?)\s{2,}(\d{2}\/\d{2}\/\d{4})\s{2,}€\s*([\d.,]+)/g
+  let m
+  while ((m = policyRe.exec(text))) {
+    if (foundContracts.has(m[1])) continue
+    foundContracts.add(m[1])
+    const productName = normalizeSpaces(m[2])
+    policies.push({
+      policyNumber: m[1],
+      productName,
+      effectiveDate: convertDateSlashToISO(m[3]),
+      premiumAmount: parseItalianNumber(m[4]),
+      policyType: inferAssimediciPolicyType(productName),
+    })
+  }
+
+  return policies
+}
+
+function inferAssimediciPolicyType(productName: string): 'auto' | 'home' | 'life' | 'health' | 'other' {
+  const prod = productName.toUpperCase()
+
+  if (/(?:RC_MED|MEDIC|SANITARI|SALUT|ABIL)/i.test(prod)) return 'health'
+  if (/(?:AUTO|VEICOL|KASKO)/i.test(prod)) return 'auto'
+  if (/(?:CASA|ABITAZ)/i.test(prod)) return 'home'
+  if (/(?:VITA|PENSION)/i.test(prod)) return 'life'
+
+  return 'other'
+}
+
 // ==================== GENERIC PARSER ====================
 
 function parseGeneric(text: string): Partial<ParsedPolicyData>[] {
@@ -337,7 +477,15 @@ function parseGeneric(text: string): Partial<ParsedPolicyData>[] {
   const amountMatch = text.match(/([\d.,]+)\s*€/i)
   if (amountMatch) data.premiumAmount = parseItalianNumber(amountMatch[1])
 
-  data.clientType = detectClientType(data)
+  // Regola uniforme: P.IVA compilata → azienda, solo CF → persona, entrambi → azienda
+  if (data.clientVatNumber) {
+    data.clientType = 'azienda'
+    if (!data.clientCompanyName && data.clientName) {
+      data.clientCompanyName = data.clientName
+    }
+  } else {
+    data.clientType = detectClientType(data)
+  }
 
   return [data]
 }
@@ -365,6 +513,21 @@ export async function parsePolicyPDF(file: File): Promise<ParsedPolicyData[]> {
   if (isAllianzFormat(rawText)) {
     const client = parseAllianzClient(rawText)
     const policies = parseAllianzPolicies(rawText)
+
+    if (policies.length === 0) {
+      return [{ ...client, rawText } as ParsedPolicyData]
+    }
+
+    return policies.map(pol => ({
+      ...client,
+      ...pol,
+      rawText,
+    } as ParsedPolicyData))
+  }
+
+  if (isAssimediciFormat(rawText)) {
+    const client = parseAssimediciClient(rawText)
+    const policies = parseAssimediciPolicies(rawText)
 
     if (policies.length === 0) {
       return [{ ...client, rawText } as ParsedPolicyData]

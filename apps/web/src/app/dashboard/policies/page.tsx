@@ -27,6 +27,16 @@ const typeLabels: Record<string, string> = {
   other: 'Altro',
 }
 
+const clientTypeLabels: Record<string, string> = {
+  persona: 'Persona',
+  azienda: 'Azienda',
+}
+
+const clientTypeColors: Record<string, string> = {
+  persona: 'bg-blue-100 text-blue-700',
+  azienda: 'bg-purple-100 text-purple-700',
+}
+
 export default function PoliciesPage() {
   const router = useRouter()
   const [policies, setPolicies] = useState<any[]>([])
@@ -34,6 +44,7 @@ export default function PoliciesPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [clientTypeFilter, setClientTypeFilter] = useState('')
 
   const handleDelete = async (id: string, policyNumber: string) => {
     if (!confirm(`Sei sicuro di voler eliminare la polizza "${policyNumber}"?`)) return
@@ -51,6 +62,7 @@ export default function PoliciesPage() {
       const data = await getPolicies({
         status: statusFilter || undefined,
         policyType: typeFilter || undefined,
+        clientType: clientTypeFilter || undefined,
         search: search || undefined,
       })
       setPolicies(data)
@@ -63,7 +75,7 @@ export default function PoliciesPage() {
 
   useEffect(() => {
     loadPolicies()
-  }, [statusFilter, typeFilter])
+  }, [statusFilter, typeFilter, clientTypeFilter])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,10 +84,11 @@ export default function PoliciesPage() {
 
   const exportCSV = () => {
     if (policies.length === 0) return
-    const headers = ['N. Polizza', 'Cliente', 'Tipo', 'Compagnia', 'Premio', 'Decorrenza', 'Scadenza', 'Stato']
+    const headers = ['N. Polizza', 'Cliente', 'Tipo Cliente', 'Tipo', 'Compagnia', 'Premio', 'Decorrenza', 'Scadenza', 'Stato']
     const rows = policies.map(p => [
       p.policy_number,
       p.client_name,
+      clientTypeLabels[p.client_type] ?? 'N/D',
       typeLabels[p.policy_type] ?? p.policy_type,
       p.insurance_companies?.name ?? '',
       Number(p.premium_amount).toFixed(2),
@@ -155,6 +168,18 @@ export default function PoliciesPage() {
             <option value="other">Altro</option>
           </select>
         </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Tipo Cliente</label>
+          <select
+            value={clientTypeFilter}
+            onChange={(e) => setClientTypeFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+          >
+            <option value="">Tutti</option>
+            <option value="persona">Persona</option>
+            <option value="azienda">Azienda</option>
+          </select>
+        </div>
       </div>
 
       {/* Tabella */}
@@ -175,6 +200,7 @@ export default function PoliciesPage() {
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">N. Polizza</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo Cliente</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Compagnia</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Premio</th>
@@ -192,6 +218,11 @@ export default function PoliciesPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-gray-900">{p.client_name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${clientTypeColors[p.client_type] ?? 'bg-gray-100 text-gray-500'}`}>
+                        {clientTypeLabels[p.client_type] ?? 'N/D'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{typeLabels[p.policy_type] ?? p.policy_type}</td>
                     <td className="px-4 py-3 text-gray-600">{p.insurance_companies?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">

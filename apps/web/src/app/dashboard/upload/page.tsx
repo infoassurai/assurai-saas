@@ -165,6 +165,7 @@ export default function UploadPage() {
         client_fiscal_code: item.parsed.clientType === 'azienda'
           ? (item.parsed.clientVatNumber || item.parsed.clientFiscalCode)
           : item.parsed.clientFiscalCode,
+        client_type: item.parsed.clientType || 'persona',
         premium_amount: item.parsed.premiumAmount || 0,
         effective_date: item.parsed.effectiveDate || new Date().toISOString().split('T')[0],
         expiry_date: item.parsed.expiryDate || new Date().toISOString().split('T')[0],

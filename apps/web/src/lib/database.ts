@@ -52,6 +52,7 @@ export async function updateTenant(tenantId: string, updates: { name?: string })
 export async function getPolicies(filters?: {
   status?: string
   policyType?: string
+  clientType?: string
   search?: string
 }) {
   const supabase = createClient()
@@ -62,6 +63,7 @@ export async function getPolicies(filters?: {
 
   if (filters?.status) query = query.eq('status', filters.status)
   if (filters?.policyType) query = query.eq('policy_type', filters.policyType)
+  if (filters?.clientType) query = query.eq('client_type', filters.clientType)
   if (filters?.search) query = query.or(`client_name.ilike.%${filters.search}%,policy_number.ilike.%${filters.search}%`)
 
   const { data, error } = await query
@@ -101,6 +103,7 @@ export async function createPolicy(policy: {
   client_email?: string
   client_phone?: string
   client_fiscal_code?: string
+  client_type?: 'persona' | 'azienda'
   premium_amount: number
   effective_date: string
   expiry_date: string
