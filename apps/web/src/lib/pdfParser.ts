@@ -149,6 +149,11 @@ function parseGeneraliClient(text: string): Partial<ParsedPolicyData> {
     data.clientType = detectClientType(data)
   }
 
+  // Garantisci che clientName sia sempre popolato
+  if (!data.clientName && data.clientCompanyName) {
+    data.clientName = data.clientCompanyName
+  }
+
   return data
 }
 
@@ -238,11 +243,10 @@ function parseAllianzClient(text: string): Partial<ParsedPolicyData> {
   const nameMatch = text.match(/Resoconto\s+assicurativo\s+del\s+cliente\s+(.+?)\s+Agenzia/i)
   if (nameMatch) {
     const name = normalizeSpaces(nameMatch[1])
+    data.clientName = name
     if (/\b(?:S\.?R\.?L\.?S?|S\.?P\.?A\.?|S\.?A\.?S\.?|S\.?N\.?C\.?|SOCIETA|DITTA|COOPERATIVA)\b/i.test(name)) {
       data.clientCompanyName = name
       data.clientType = 'azienda'
-    } else {
-      data.clientName = name
     }
   }
 
@@ -284,6 +288,11 @@ function parseAllianzClient(text: string): Partial<ParsedPolicyData> {
     }
   } else if (!data.clientType) {
     data.clientType = detectClientType(data)
+  }
+
+  // Garantisci che clientName sia sempre popolato
+  if (!data.clientName && data.clientCompanyName) {
+    data.clientName = data.clientCompanyName
   }
 
   return data
@@ -407,6 +416,11 @@ function parseAssimediciClient(text: string): Partial<ParsedPolicyData> {
     data.clientType = 'persona'
   }
 
+  // Garantisci che clientName sia sempre popolato
+  if (!data.clientName && data.clientCompanyName) {
+    data.clientName = data.clientCompanyName
+  }
+
   return data
 }
 
@@ -486,6 +500,11 @@ function parseGeneric(text: string): Partial<ParsedPolicyData>[] {
     }
   } else {
     data.clientType = detectClientType(data)
+  }
+
+  // Garantisci che clientName sia sempre popolato
+  if (!data.clientName && data.clientCompanyName) {
+    data.clientName = data.clientCompanyName
   }
 
   return [data]
