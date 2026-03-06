@@ -346,10 +346,12 @@ function parseAssimediciClient(text: string): Partial<ParsedPolicyData> {
   const codeMatch = text.match(/\b(A\d{12,})\b/)
   if (codeMatch) data.clientCode = codeMatch[1]
 
-  // Nome cliente: COGNOME NOME dopo il codice anagrafica (spazi multipli possibili)
-  // Testo reale: "A202510290036     MAZZEO GIROLAMO  Indirizzo:"
-  const nameMatch = text.match(/A\d{12,}\s+([A-ZÀ-Úa-zà-ú]{2,}(?:\s+[A-ZÀ-Úa-zà-ú]{2,})+?)(?=\s{2,}Indirizzo:|\s{2,}Telefono:|\s{2,}Codice)/i)
-  if (nameMatch) data.clientName = titleCase(normalizeSpaces(nameMatch[1]))
+  // Nome cliente: tutto tra codice A... e "Indirizzo:" (approccio robusto)
+  const nameMatch = text.match(/A\d{12,}\s+(.+?)(?=\s{2,}Indirizzo:|\s{2,}Telefono:|\s{2,}Codice)/i)
+  if (nameMatch) {
+    const rawName = normalizeSpaces(nameMatch[1]).trim()
+    if (rawName.length >= 3) data.clientName = titleCase(rawName)
+  }
 
   // Indirizzo: prendi solo il primo (quello del cliente, non della sezione Azienda)
   // Testo: "Indirizzo: PALLAVICINO VIA VIVAIO 14  Città: CANTALUPO LIGURE..."

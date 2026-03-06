@@ -115,11 +115,24 @@ export async function createPolicy(policy: {
   const profile = await getProfile()
   if (!profile) throw new Error('Profilo non trovato')
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('policies')
     .insert({ ...policy, tenant_id: profile.tenant_id, agent_id: profile.id })
     .select()
     .single()
+
+  // Fallback: se client_type non è nella schema cache, riprova senza
+  if (error && error.message?.includes('client_type')) {
+    const { client_type, ...policyWithoutClientType } = policy
+    const retry = await supabase
+      .from('policies')
+      .insert({ ...policyWithoutClientType, tenant_id: profile.tenant_id, agent_id: profile.id })
+      .select()
+      .single()
+    data = retry.data
+    error = retry.error
+  }
+
   if (error) throw error
 
   if (data) {
