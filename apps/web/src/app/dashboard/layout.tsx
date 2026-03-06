@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { globalSearch } from '@/lib/database'
 import Logo from '@/components/Logo'
+import pkg from '../../../package.json'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
@@ -109,6 +110,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
+
+        <div className="p-4 border-t border-gray-200">
+          <span className="text-xs text-gray-400">v{pkg.version}</span>
+        </div>
       </aside>
 
       {/* Main content */}
