@@ -642,20 +642,39 @@ export async function getDashboardStats() {
   const in30Days = thirtyDaysFromNow.toISOString().split('T')[0]
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 
-  const [activePolicies, expiringPolicies, monthCommissions, totalDocuments] = await Promise.all([
+  const [activePolicies, expiringPolicies, monthCommissions, totalDocuments, allActivePolicies, newPoliciesMonth] = await Promise.all([
     supabase.from('policies').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('policies').select('id', { count: 'exact', head: true }).eq('status', 'active').gte('expiry_date', today).lte('expiry_date', in30Days),
     supabase.from('commissions').select('amount').gte('created_at', monthStart),
     supabase.from('documents').select('id', { count: 'exact', head: true }),
+    supabase.from('policies').select('premium_amount, client_type, client_fiscal_code').eq('status', 'active'),
+    supabase.from('policies').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
   ])
 
   const commissionTotal = (monthCommissions.data ?? []).reduce((sum, c) => sum + Number(c.amount), 0)
+
+  const activePoliciesData = allActivePolicies.data ?? []
+  const totalPremium = activePoliciesData.reduce((sum, p) => sum + Number(p.premium_amount || 0), 0)
+  const avgPremium = activePoliciesData.length > 0 ? totalPremium / activePoliciesData.length : 0
+
+  let clientiPersona = 0
+  let clientiAzienda = 0
+  for (const p of activePoliciesData) {
+    const ct = p.client_type || (p.client_fiscal_code && /^\d{11}$/.test(p.client_fiscal_code) ? 'azienda' : 'persona')
+    if (ct === 'azienda') clientiAzienda++
+    else clientiPersona++
+  }
 
   return {
     activePolicies: activePolicies.count ?? 0,
     expiringPolicies: expiringPolicies.count ?? 0,
     monthCommissions: commissionTotal,
     totalDocuments: totalDocuments.count ?? 0,
+    totalPremium,
+    avgPremium,
+    clientiPersona,
+    clientiAzienda,
+    newPoliciesMonth: newPoliciesMonth.count ?? 0,
   }
 }
 

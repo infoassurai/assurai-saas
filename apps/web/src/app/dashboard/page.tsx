@@ -38,7 +38,7 @@ const monthNames: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth()
-  const [stats, setStats] = useState({ activePolicies: 0, expiringPolicies: 0, monthCommissions: 0, totalDocuments: 0 })
+  const [stats, setStats] = useState({ activePolicies: 0, expiringPolicies: 0, monthCommissions: 0, totalDocuments: 0, totalPremium: 0, avgPremium: 0, clientiPersona: 0, clientiAzienda: 0, newPoliciesMonth: 0 })
   const [recentPolicies, setRecentPolicies] = useState<any[]>([])
   const [typeData, setTypeData] = useState<any[]>([])
   const [commissionData, setCommissionData] = useState<any[]>([])
@@ -78,8 +78,12 @@ export default function DashboardPage() {
   const statCards = [
     { label: 'Polizze Attive', value: String(stats.activePolicies), color: 'bg-blue-50 text-blue-700' },
     { label: 'In Scadenza (30gg)', value: String(stats.expiringPolicies), color: 'bg-amber-50 text-amber-700' },
-    { label: 'Commissioni Mese', value: fmt(stats.monthCommissions), color: 'bg-green-50 text-green-700' },
-    { label: 'Documenti Caricati', value: String(stats.totalDocuments), color: 'bg-purple-50 text-purple-700' },
+    { label: 'Nuove Polizze Mese', value: String(stats.newPoliciesMonth), color: 'bg-indigo-50 text-indigo-700' },
+    { label: 'Premio Portafoglio', value: fmt(stats.totalPremium), color: 'bg-green-50 text-green-700' },
+    { label: 'Premio Medio', value: fmt(stats.avgPremium), color: 'bg-emerald-50 text-emerald-700' },
+    { label: 'Commissioni Mese', value: fmt(stats.monthCommissions), color: 'bg-teal-50 text-teal-700' },
+    { label: 'Clienti Persona', value: String(stats.clientiPersona), color: 'bg-sky-50 text-sky-700' },
+    { label: 'Clienti Azienda', value: String(stats.clientiAzienda), color: 'bg-purple-50 text-purple-700' },
   ]
 
   return (
@@ -89,7 +93,7 @@ export default function DashboardPage() {
       </h2>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
         {statCards.map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-5">
             <p className="text-sm text-gray-500 mb-1">{stat.label}</p>
