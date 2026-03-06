@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { uploadDocument, createPolicy, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy } from '@/lib/database'
 import { parsePolicyPDF, type ParsedPolicyData } from '@/lib/pdfParser'
@@ -24,8 +24,15 @@ const policyTypeOptions = [
   { value: 'other', label: 'Altro' },
 ]
 
+function addMonthsToDate(dateStr: string, months: number): string {
+  const d = new Date(dateStr)
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().split('T')[0]
+}
+
 export default function UploadPage() {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [items, setItems] = useState<ParsedItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [processing, setProcessing] = useState(false)
@@ -112,6 +119,9 @@ export default function UploadPage() {
     setItems(prev => [...prev, ...newItems])
     setCurrentIndex(0)
     setProcessing(false)
+
+    // Reset input file per permettere re-upload dello stesso file
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const updateItem = (id: string, updates: Partial<ParsedItem>) => {
@@ -119,25 +129,45 @@ export default function UploadPage() {
   }
 
   const handleApprove = async (item: ParsedItem) => {
-    if (!item.parsed) return
+    const parsed = item.parsed
+    if (!parsed) return
+
+    // Scadenza mancante: alert bloccante con proposta 1 anno / 6 mesi
+    if (!parsed.expiryDate) {
+      const effDate = parsed.effectiveDate
+      if (!effDate) {
+        updateItem(item.id, { error: 'Data di decorrenza e scadenza mancanti. Compilare manualmente.' })
+        return
+      }
+      const oneYear = addMonthsToDate(effDate, 12)
+      const choice = window.confirm(
+        `Data di scadenza non presente nel PDF.\n\nCalcolare 1 anno dalla decorrenza (${new Date(effDate).toLocaleDateString('it-IT')})?\n\nScadenza proposta: ${new Date(oneYear).toLocaleDateString('it-IT')}\n\nOK = 1 anno\nAnnulla = 6 mesi`
+      )
+      const expiryDate = choice
+        ? addMonthsToDate(effDate, 12)
+        : addMonthsToDate(effDate, 6)
+      updateParsedField(item.id, 'expiryDate', expiryDate)
+      parsed.expiryDate = expiryDate
+    }
+
     updateItem(item.id, { saving: true, error: undefined })
 
     try {
       let companyId: string | undefined
-      if (item.parsed.companyName) {
+      if (parsed.companyName) {
         const companies = await getInsuranceCompanies()
         const existing = companies.find(
-          (c: any) => c.name.toLowerCase() === item.parsed!.companyName!.toLowerCase()
+          (c: any) => c.name.toLowerCase() === parsed.companyName!.toLowerCase()
         )
         if (existing) {
           companyId = existing.id
         } else {
-          const newCompany = await createInsuranceCompany({ name: item.parsed.companyName })
+          const newCompany = await createInsuranceCompany({ name: parsed.companyName })
           companyId = newCompany.id
         }
       }
 
-      const policyNumber = item.parsed.policyNumber || 'DA_ASSEGNARE'
+      const policyNumber = parsed.policyNumber || 'DA_ASSEGNARE'
 
       if (policyNumber !== 'DA_ASSEGNARE') {
         const duplicates = await checkDuplicatePolicy(policyNumber, companyId)
@@ -154,32 +184,24 @@ export default function UploadPage() {
         }
       }
 
-      // Nome cliente: per azienda usa ragione sociale, altrimenti nome persona
-      const clientName = item.parsed.clientType === 'azienda'
-        ? (item.parsed.clientCompanyName || item.parsed.clientName || 'Sconosciuto')
-        : (item.parsed.clientName || 'Sconosciuto')
-
-      // Scadenza: se mancante, deve essere stata impostata dal selettore nel form
-      if (!item.parsed.expiryDate) {
-        updateItem(item.id, { error: 'Data di scadenza obbligatoria. Seleziona una durata.', saving: false })
-        return
-      }
+      // Nome: usa sempre clientName (nome persona), con fallback a clientCompanyName
+      const clientName = parsed.clientName || parsed.clientCompanyName || 'Sconosciuto'
 
       const policy = await createPolicy({
         policy_number: policyNumber,
-        policy_type: item.parsed.policyType || 'other',
+        policy_type: parsed.policyType || 'other',
         client_name: clientName,
-        client_email: item.parsed.clientEmail,
-        client_phone: item.parsed.clientPhone,
-        client_fiscal_code: item.parsed.clientType === 'azienda'
-          ? (item.parsed.clientVatNumber || item.parsed.clientFiscalCode)
-          : item.parsed.clientFiscalCode,
-        client_type: item.parsed.clientType || 'persona',
-        premium_amount: item.parsed.premiumAmount || 0,
-        effective_date: item.parsed.effectiveDate || new Date().toISOString().split('T')[0],
-        expiry_date: item.parsed.expiryDate,
+        client_email: parsed.clientEmail,
+        client_phone: parsed.clientPhone,
+        client_fiscal_code: parsed.clientType === 'azienda'
+          ? (parsed.clientVatNumber || parsed.clientFiscalCode)
+          : parsed.clientFiscalCode,
+        client_type: parsed.clientType || 'persona',
+        premium_amount: parsed.premiumAmount || 0,
+        effective_date: parsed.effectiveDate || new Date().toISOString().split('T')[0],
+        expiry_date: parsed.expiryDate!,
         company_id: companyId,
-        notes: `Importata da PDF - ${item.parsed.companyName || 'N/D'} - ${item.parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${item.parsed.productName ? ` - ${item.parsed.productName}` : ''}${item.parsed.plate ? ` - Targa: ${item.parsed.plate}` : ''}`,
+        notes: `Importata da PDF - ${parsed.companyName || 'N/D'} - ${parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${parsed.productName ? ` - ${parsed.productName}` : ''}${parsed.plate ? ` - Targa: ${parsed.plate}` : ''}`,
       })
 
       if (item.docId && policy) {
@@ -224,6 +246,7 @@ export default function UploadPage() {
         <label className="inline-block bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition cursor-pointer">
           Seleziona file
           <input
+            ref={fileInputRef}
             type="file"
             accept="application/pdf"
             multiple
@@ -315,16 +338,12 @@ export default function UploadPage() {
                         ))}
                       </div>
                     </div>
-                    {currentItem.parsed!.clientType === 'azienda' && (
-                      <>
-                        <Field label="Ragione Sociale" value={currentItem.parsed.clientCompanyName ?? ''}
-                          onChange={(v) => updateParsedField(currentItem.id, 'clientCompanyName', v)} inputClass={inputClass} />
-                        <Field label="P.IVA" value={currentItem.parsed.clientVatNumber ?? ''}
-                          onChange={(v) => updateParsedField(currentItem.id, 'clientVatNumber', v)} inputClass={inputClass} />
-                      </>
-                    )}
-                    <Field label={currentItem.parsed!.clientType === 'azienda' ? 'Riferimento' : 'Nome'} value={currentItem.parsed.clientName ?? ''}
+                    <Field label="Nome / Ragione Sociale" value={currentItem.parsed.clientName ?? ''}
                       onChange={(v) => updateParsedField(currentItem.id, 'clientName', v)} inputClass={inputClass} />
+                    {currentItem.parsed!.clientType === 'azienda' && (
+                      <Field label="P.IVA" value={currentItem.parsed.clientVatNumber ?? ''}
+                        onChange={(v) => updateParsedField(currentItem.id, 'clientVatNumber', v)} inputClass={inputClass} />
+                    )}
                     {currentItem.parsed!.clientType !== 'azienda' && (
                       <Field label="Data Nascita" value={currentItem.parsed.clientBirthDate ?? ''}
                         onChange={(v) => updateParsedField(currentItem.id, 'clientBirthDate', v)} inputClass={inputClass} />
@@ -337,10 +356,8 @@ export default function UploadPage() {
                       onChange={(v) => updateParsedField(currentItem.id, 'clientPhone', v)} inputClass={inputClass} />
                     <Field label="Indirizzo" value={currentItem.parsed.clientAddress ?? ''}
                       onChange={(v) => updateParsedField(currentItem.id, 'clientAddress', v)} inputClass={inputClass} />
-                    {currentItem.parsed!.clientType !== 'azienda' && (
-                      <Field label="Professione" value={currentItem.parsed.clientProfession ?? ''}
-                        onChange={(v) => updateParsedField(currentItem.id, 'clientProfession', v)} inputClass={inputClass} />
-                    )}
+                    <Field label="Professione / Attività" value={currentItem.parsed.clientProfession ?? ''}
+                      onChange={(v) => updateParsedField(currentItem.id, 'clientProfession', v)} inputClass={inputClass} />
                   </div>
                 </div>
 
@@ -368,39 +385,8 @@ export default function UploadPage() {
                     </div>
                     <Field label="Decorrenza" value={currentItem.parsed.effectiveDate ?? ''} type="date"
                       onChange={(v) => updateParsedField(currentItem.id, 'effectiveDate', v)} inputClass={inputClass} />
-                    <div>
-                      <Field label="Scadenza" value={currentItem.parsed.expiryDate ?? ''} type="date"
-                        onChange={(v) => updateParsedField(currentItem.id, 'expiryDate', v)} inputClass={inputClass} />
-                      {!currentItem.parsed.expiryDate && (
-                        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                          <p className="text-xs text-amber-700 font-medium mb-2">Data di scadenza non presente nel PDF. Calcola dalla decorrenza:</p>
-                          <div className="flex gap-2">
-                            <button type="button"
-                              onClick={() => {
-                                const eff = currentItem.parsed?.effectiveDate
-                                if (!eff) return
-                                const d = new Date(eff)
-                                d.setMonth(d.getMonth() + 6)
-                                updateParsedField(currentItem.id, 'expiryDate', d.toISOString().split('T')[0])
-                              }}
-                              className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition">
-                              6 mesi
-                            </button>
-                            <button type="button"
-                              onClick={() => {
-                                const eff = currentItem.parsed?.effectiveDate
-                                if (!eff) return
-                                const d = new Date(eff)
-                                d.setFullYear(d.getFullYear() + 1)
-                                updateParsedField(currentItem.id, 'expiryDate', d.toISOString().split('T')[0])
-                              }}
-                              className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition">
-                              1 anno
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <Field label="Scadenza" value={currentItem.parsed.expiryDate ?? ''} type="date"
+                      onChange={(v) => updateParsedField(currentItem.id, 'expiryDate', v)} inputClass={inputClass} />
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Premio (€)</label>
                       <input
