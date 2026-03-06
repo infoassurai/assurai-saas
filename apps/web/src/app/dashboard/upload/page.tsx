@@ -154,12 +154,21 @@ export default function UploadPage() {
         }
       }
 
+      // Nome cliente: per azienda usa ragione sociale, altrimenti nome persona
+      const clientName = item.parsed.clientType === 'azienda'
+        ? (item.parsed.clientCompanyName || item.parsed.clientName || 'Sconosciuto')
+        : (item.parsed.clientName || 'Sconosciuto')
+
+      // Scadenza: se mancante, deve essere stata impostata dal selettore nel form
+      if (!item.parsed.expiryDate) {
+        updateItem(item.id, { error: 'Data di scadenza obbligatoria. Seleziona una durata.', saving: false })
+        return
+      }
+
       const policy = await createPolicy({
         policy_number: policyNumber,
         policy_type: item.parsed.policyType || 'other',
-        client_name: item.parsed.clientType === 'azienda'
-          ? (item.parsed.clientCompanyName || item.parsed.clientName || 'Sconosciuto')
-          : (item.parsed.clientName || 'Sconosciuto'),
+        client_name: clientName,
         client_email: item.parsed.clientEmail,
         client_phone: item.parsed.clientPhone,
         client_fiscal_code: item.parsed.clientType === 'azienda'
@@ -168,7 +177,7 @@ export default function UploadPage() {
         client_type: item.parsed.clientType || 'persona',
         premium_amount: item.parsed.premiumAmount || 0,
         effective_date: item.parsed.effectiveDate || new Date().toISOString().split('T')[0],
-        expiry_date: item.parsed.expiryDate || new Date().toISOString().split('T')[0],
+        expiry_date: item.parsed.expiryDate,
         company_id: companyId,
         notes: `Importata da PDF - ${item.parsed.companyName || 'N/D'} - ${item.parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${item.parsed.productName ? ` - ${item.parsed.productName}` : ''}${item.parsed.plate ? ` - Targa: ${item.parsed.plate}` : ''}`,
       })
@@ -359,8 +368,39 @@ export default function UploadPage() {
                     </div>
                     <Field label="Decorrenza" value={currentItem.parsed.effectiveDate ?? ''} type="date"
                       onChange={(v) => updateParsedField(currentItem.id, 'effectiveDate', v)} inputClass={inputClass} />
-                    <Field label="Scadenza" value={currentItem.parsed.expiryDate ?? ''} type="date"
-                      onChange={(v) => updateParsedField(currentItem.id, 'expiryDate', v)} inputClass={inputClass} />
+                    <div>
+                      <Field label="Scadenza" value={currentItem.parsed.expiryDate ?? ''} type="date"
+                        onChange={(v) => updateParsedField(currentItem.id, 'expiryDate', v)} inputClass={inputClass} />
+                      {!currentItem.parsed.expiryDate && (
+                        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                          <p className="text-xs text-amber-700 font-medium mb-2">Data di scadenza non presente nel PDF. Calcola dalla decorrenza:</p>
+                          <div className="flex gap-2">
+                            <button type="button"
+                              onClick={() => {
+                                const eff = currentItem.parsed?.effectiveDate
+                                if (!eff) return
+                                const d = new Date(eff)
+                                d.setMonth(d.getMonth() + 6)
+                                updateParsedField(currentItem.id, 'expiryDate', d.toISOString().split('T')[0])
+                              }}
+                              className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition">
+                              6 mesi
+                            </button>
+                            <button type="button"
+                              onClick={() => {
+                                const eff = currentItem.parsed?.effectiveDate
+                                if (!eff) return
+                                const d = new Date(eff)
+                                d.setFullYear(d.getFullYear() + 1)
+                                updateParsedField(currentItem.id, 'expiryDate', d.toISOString().split('T')[0])
+                              }}
+                              className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition">
+                              1 anno
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Premio (€)</label>
                       <input

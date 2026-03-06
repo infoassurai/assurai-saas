@@ -338,7 +338,8 @@ function parseAssimediciClient(text: string): Partial<ParsedPolicyData> {
   if (codeMatch) data.clientCode = codeMatch[1]
 
   // Nome cliente: COGNOME NOME dopo il codice anagrafica (spazi multipli possibili)
-  const nameMatch = text.match(/A\d{12,}\s+([A-ZÀ-Ú]{2,}(?:\s+[A-ZÀ-Ú]{2,})+)/)
+  // Testo reale: "A202510290036     MAZZEO GIROLAMO  Indirizzo:"
+  const nameMatch = text.match(/A\d{12,}\s+([A-ZÀ-Úa-zà-ú]{2,}(?:\s+[A-ZÀ-Úa-zà-ú]{2,})+?)(?=\s{2,}Indirizzo:|\s{2,}Telefono:|\s{2,}Codice)/i)
   if (nameMatch) data.clientName = titleCase(normalizeSpaces(nameMatch[1]))
 
   // Indirizzo: prendi solo il primo (quello del cliente, non della sezione Azienda)
