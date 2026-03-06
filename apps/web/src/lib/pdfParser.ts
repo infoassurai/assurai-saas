@@ -349,7 +349,11 @@ function parseAssimediciClient(text: string): Partial<ParsedPolicyData> {
   // Nome cliente: tutto tra codice A... e "Indirizzo:" (approccio robusto)
   const nameMatch = text.match(/A\d{12,}\s+(.+?)(?=\s{2,}Indirizzo:|\s{2,}Telefono:|\s{2,}Codice)/i)
   if (nameMatch) {
-    const rawName = normalizeSpaces(nameMatch[1]).trim()
+    // Rimuovi simboli/emoji/caratteri non-lettera all'inizio e alla fine
+    const rawName = normalizeSpaces(nameMatch[1])
+      .replace(/^[^A-Za-zÀ-ÿ]+/, '')
+      .replace(/[^A-Za-zÀ-ÿ]+$/, '')
+      .trim()
     if (rawName.length >= 3) data.clientName = titleCase(rawName)
   }
 
