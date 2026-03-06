@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getAlerts, markAlertRead, dismissAlert } from '@/lib/database'
+import { getAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllAlertsRead } from '@/lib/database'
 
 const typeLabels: Record<string, string> = {
   expiry: 'Scadenza',
   payment: 'Pagamento',
   document: 'Documento',
   custom: 'Personalizzato',
+  missing_plan: 'Piano mancante',
 }
 
 const typeColors: Record<string, string> = {
@@ -15,6 +16,7 @@ const typeColors: Record<string, string> = {
   payment: 'bg-yellow-100 text-yellow-700',
   document: 'bg-blue-100 text-blue-700',
   custom: 'bg-gray-100 text-gray-600',
+  missing_plan: 'bg-orange-100 text-orange-700',
 }
 
 export default function AlertsPage() {
@@ -25,6 +27,7 @@ export default function AlertsPage() {
   const loadAlerts = async () => {
     setLoading(true)
     try {
+      await generateExpiryAlerts()
       const data = await getAlerts(showDismissed)
       setAlerts(data)
     } catch (err) {
@@ -35,6 +38,11 @@ export default function AlertsPage() {
   }
 
   useEffect(() => { loadAlerts() }, [showDismissed])
+
+  const handleMarkAllRead = async () => {
+    await markAllAlertsRead()
+    await loadAlerts()
+  }
 
   const handleMarkRead = async (id: string) => {
     await markAlertRead(id)
@@ -48,12 +56,16 @@ export default function AlertsPage() {
 
   const unreadCount = alerts.filter(a => !a.is_read).length
 
-  const isOverdue = (date: string) => new Date(date) < new Date()
-  const isSoon = (date: string) => {
-    const d = new Date(date)
-    const now = new Date()
-    const diff = (d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-    return diff >= 0 && diff <= 7
+  const getDaysLeft = (date: string) => Math.ceil((new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+  const isOverdue = (date: string) => getDaysLeft(date) < 0
+  const isSoon = (date: string) => { const d = getDaysLeft(date); return d >= 0 && d <= 7 }
+
+  const getUrgencyBorder = (date: string) => {
+    const days = getDaysLeft(date)
+    if (days < 0) return 'border-l-4 border-l-red-500'
+    if (days <= 7) return 'border-l-4 border-l-orange-500'
+    if (days <= 15) return 'border-l-4 border-l-yellow-400'
+    return ''
   }
 
   return (
@@ -67,15 +79,25 @@ export default function AlertsPage() {
             </span>
           )}
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={showDismissed}
-            onChange={(e) => setShowDismissed(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          Mostra archiviati
-        </label>
+        <div className="flex items-center gap-4">
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllRead}
+              className="text-sm text-primary-600 hover:text-primary-800 font-medium"
+            >
+              Segna tutti come letti
+            </button>
+          )}
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={showDismissed}
+              onChange={(e) => setShowDismissed(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Mostra archiviati
+          </label>
+        </div>
       </div>
 
       {loading ? (
@@ -91,7 +113,7 @@ export default function AlertsPage() {
               key={alert.id}
               className={`bg-white rounded-xl border p-4 flex items-start gap-4 transition ${
                 !alert.is_read ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
-              } ${alert.is_dismissed ? 'opacity-50' : ''}`}
+              } ${alert.is_dismissed ? 'opacity-50' : ''} ${alert.due_date ? getUrgencyBorder(alert.due_date) : ''}`}
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">

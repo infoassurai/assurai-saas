@@ -441,6 +441,15 @@ export async function updateCommission(id: string, updates: Record<string, unkno
 // ============================================
 // ALERTS
 // ============================================
+
+const EXPIRY_STAGES = [
+  { days: 60, label: '60gg' },
+  { days: 30, label: '30gg' },
+  { days: 15, label: '15gg' },
+  { days: 7, label: '7gg' },
+  { days: 0, label: 'scaduta' },
+]
+
 export async function getAlerts(showDismissed = false) {
   const supabase = createClient()
   let query = supabase
@@ -461,44 +470,70 @@ export async function generateExpiryAlerts() {
   if (!profile) return
 
   const today = new Date()
-  const in30Days = new Date()
-  in30Days.setDate(today.getDate() + 30)
 
-  // Polizze in scadenza entro 30gg
-  const { data: expiringPolicies } = await supabase
+  // Scadenza entro 60gg oppure scadute da max 7gg
+  const in60Days = new Date()
+  in60Days.setDate(today.getDate() + 60)
+  const expired7DaysAgo = new Date()
+  expired7DaysAgo.setDate(today.getDate() - 7)
+
+  const { data: policies } = await supabase
     .from('policies')
     .select('id, policy_number, client_name, expiry_date')
     .eq('status', 'active')
-    .gte('expiry_date', today.toISOString().split('T')[0])
-    .lte('expiry_date', in30Days.toISOString().split('T')[0])
+    .gte('expiry_date', expired7DaysAgo.toISOString().split('T')[0])
+    .lte('expiry_date', in60Days.toISOString().split('T')[0])
 
-  if (!expiringPolicies || expiringPolicies.length === 0) return
+  if (!policies || policies.length === 0) return 0
 
-  // Alert già esistenti per queste polizze
-  const policyIds = expiringPolicies.map(p => p.id)
+  // Alert esistenti per queste polizze (tipo expiry)
+  const policyIds = policies.map(p => p.id)
   const { data: existingAlerts } = await supabase
     .from('alerts')
-    .select('policy_id')
+    .select('policy_id, title')
     .eq('type', 'expiry')
     .in('policy_id', policyIds)
 
-  const existingPolicyIds = new Set((existingAlerts ?? []).map(a => a.policy_id))
+  const existingKeys = new Set(
+    (existingAlerts ?? []).map(a => `${a.policy_id}_${a.title}`)
+  )
 
-  // Crea alert solo per polizze che non hanno già un alert scadenza
-  const newAlerts = expiringPolicies
-    .filter(p => !existingPolicyIds.has(p.id))
-    .map(p => {
-      const daysLeft = Math.ceil((new Date(p.expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-      return {
-        tenant_id: profile.tenant_id,
-        policy_id: p.id,
-        type: 'expiry' as const,
-        title: `Polizza ${p.policy_number} in scadenza`,
-        message: `La polizza di ${p.client_name} scade tra ${daysLeft} giorni (${new Date(p.expiry_date).toLocaleDateString('it-IT')})`,
-        due_date: p.expiry_date,
-        channel: 'in_app' as const,
-      }
+  const newAlerts: Array<{
+    tenant_id: string
+    policy_id: string
+    type: string
+    title: string
+    message: string
+    due_date: string
+    channel: string
+  }> = []
+
+  for (const p of policies) {
+    const daysLeft = Math.ceil(
+      (new Date(p.expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    )
+
+    // Determina lo stage corretto
+    const stage = EXPIRY_STAGES.find(s => daysLeft <= s.days) ?? EXPIRY_STAGES[0]
+    const title = `[${stage.label}] Polizza ${p.policy_number} ${stage.label === 'scaduta' ? 'scaduta' : 'in scadenza'}`
+    const key = `${p.id}_${title}`
+
+    if (existingKeys.has(key)) continue
+
+    const message = daysLeft <= 0
+      ? `La polizza di ${p.client_name} è scaduta il ${new Date(p.expiry_date).toLocaleDateString('it-IT')}`
+      : `La polizza di ${p.client_name} scade tra ${daysLeft} giorni (${new Date(p.expiry_date).toLocaleDateString('it-IT')})`
+
+    newAlerts.push({
+      tenant_id: profile.tenant_id,
+      policy_id: p.id,
+      type: 'expiry',
+      title,
+      message,
+      due_date: p.expiry_date,
+      channel: 'in_app',
     })
+  }
 
   if (newAlerts.length > 0) {
     await supabase.from('alerts').insert(newAlerts)
@@ -513,17 +548,45 @@ export async function createAlertForPolicy(policyId: string, policyNumber: strin
   if (!profile) return
 
   const daysLeft = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  if (daysLeft > 30 || daysLeft < 0) return // Solo se scade entro 30gg
+  if (daysLeft > 60 || daysLeft < -7) return // Entro 60gg o scadute da max 7gg
+
+  const stage = EXPIRY_STAGES.find(s => daysLeft <= s.days) ?? EXPIRY_STAGES[0]
+  const title = `[${stage.label}] Polizza ${policyNumber} ${stage.label === 'scaduta' ? 'scaduta' : 'in scadenza'}`
+
+  const message = daysLeft <= 0
+    ? `La polizza di ${clientName} è scaduta il ${new Date(expiryDate).toLocaleDateString('it-IT')}`
+    : `La polizza di ${clientName} scade tra ${daysLeft} giorni (${new Date(expiryDate).toLocaleDateString('it-IT')})`
 
   await supabase.from('alerts').insert({
     tenant_id: profile.tenant_id,
     policy_id: policyId,
     type: 'expiry',
-    title: `Polizza ${policyNumber} in scadenza`,
-    message: `La polizza di ${clientName} scade tra ${daysLeft} giorni (${new Date(expiryDate).toLocaleDateString('it-IT')})`,
+    title,
+    message,
     due_date: expiryDate,
     channel: 'in_app',
   })
+}
+
+export async function getUnreadAlertCount() {
+  const supabase = createClient()
+  const { count, error } = await supabase
+    .from('alerts')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_read', false)
+    .eq('is_dismissed', false)
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function markAllAlertsRead() {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('alerts')
+    .update({ is_read: true })
+    .eq('is_read', false)
+    .eq('is_dismissed', false)
+  if (error) throw error
 }
 
 export async function markAlertRead(id: string) {

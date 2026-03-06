@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { globalSearch } from '@/lib/database'
+import { globalSearch, getUnreadAlertCount } from '@/lib/database'
 import Logo from '@/components/Logo'
 import pkg from '../../../package.json'
 
@@ -30,6 +30,11 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    getUnreadAlertCount().then(setUnreadCount).catch(() => {})
+  }, [pathname])
 
   const doSearch = useCallback(async (q: string) => {
     if (q.length < 2) { setSearchResults(null); return }
@@ -106,6 +111,11 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
               >
                 <span>{item.icon}</span>
                 {item.label}
+                {item.label === 'Alerts' && unreadCount > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs font-bold min-w-[20px] h-5 flex items-center justify-center rounded-full px-1.5">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </Link>
             )
           })}

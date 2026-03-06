@@ -94,14 +94,25 @@ export default function DashboardPage() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-        {statCards.map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-sm text-gray-500 mb-1">{stat.label}</p>
-            <p className={`text-2xl font-bold ${stat.color} inline-block px-2 py-0.5 rounded`}>
-              {stat.value}
-            </p>
-          </div>
-        ))}
+        {statCards.map((stat) => {
+          const isExpiring = stat.label === 'In Scadenza (30gg)'
+          const Wrapper = isExpiring ? Link : 'div' as any
+          const wrapperProps = isExpiring ? { href: '/dashboard/alerts' } : {}
+          return (
+            <Wrapper
+              key={stat.label}
+              {...wrapperProps}
+              className={`bg-white rounded-xl border border-gray-200 p-5 block ${
+                isExpiring ? 'hover:border-amber-400 hover:shadow-md transition cursor-pointer' : ''
+              }`}
+            >
+              <p className="text-sm text-gray-500 mb-1">{stat.label}</p>
+              <p className={`text-2xl font-bold ${stat.color} inline-block px-2 py-0.5 rounded`}>
+                {stat.value}
+              </p>
+            </Wrapper>
+          )
+        })}
       </div>
 
       {/* Grafici - caricati solo client-side */}
