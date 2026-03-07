@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { expiryNotificationEmail } from '@/lib/email-templates/expiry-notification'
 
 const MAX_EMAILS_PER_RUN = 95
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   to31.setDate(today.getDate() + 31)
 
   // Query polizze attive in scadenza tra 29-31 giorni con email cliente
-  const { data: policies, error: policiesError } = await supabaseAdmin
+  const { data: policies, error: policiesError } = await getSupabaseAdmin()
     .from('policies')
     .select('id, policy_number, policy_type, client_name, client_email, expiry_date, tenant_id, agent_id')
     .eq('status', 'active')
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
   // Deduplicazione: cerca alert email già inviati per queste polizze
   const policyIds = policies.map(p => p.id)
-  const { data: existingAlerts } = await supabaseAdmin
+  const { data: existingAlerts } = await getSupabaseAdmin()
     .from('alerts')
     .select('policy_id')
     .eq('type', 'expiry')
@@ -64,10 +64,10 @@ export async function GET(request: NextRequest) {
 
   const [tenantsRes, agentsRes] = await Promise.all([
     tenantIds.length > 0
-      ? supabaseAdmin.from('tenants').select('id, name').in('id', tenantIds)
+      ? getSupabaseAdmin().from('tenants').select('id, name').in('id', tenantIds)
       : Promise.resolve({ data: [] }),
     agentIds.length > 0
-      ? supabaseAdmin.from('profiles').select('id, full_name').in('id', agentIds)
+      ? getSupabaseAdmin().from('profiles').select('id, full_name').in('id', agentIds)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Inserisci alert con channel email e sent_at
-      await supabaseAdmin.from('alerts').insert({
+      await getSupabaseAdmin().from('alerts').insert({
         tenant_id: policy.tenant_id,
         policy_id: policy.id,
         type: 'expiry',
