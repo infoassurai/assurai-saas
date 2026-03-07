@@ -13,9 +13,26 @@ export function expiryNotificationEmail(params: {
   expiryDate: string
   agentName: string
   agencyName: string
+  customBody?: string
+  customSubject?: string
 }): string {
-  const { clientName, policyNumber, policyType, expiryDate, agentName, agencyName } = params
+  const { clientName, policyNumber, policyType, expiryDate, agentName, agencyName, customBody } = params
   const typeName = policyTypeLabels[policyType] ?? policyType
+
+  // Se c'è un corpo personalizzato, usalo. Altrimenti usa il default.
+  const bodyHtml = customBody
+    ? customBody.split('\n').map(line => `<p style="margin:0 0 8px;color:#374151;font-size:16px;line-height:1.6;">${line || '&nbsp;'}</p>`).join('\n            ')
+    : `<p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.6;">
+              Gentile <strong>${clientName}</strong>,
+            </p>
+            <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.6;">
+              Le ricordiamo che la Sua polizza <strong>${typeName}</strong> n. <strong>${policyNumber}</strong>
+              scadr&agrave; il <strong>${expiryDate}</strong>.
+            </p>
+            <p style="margin:0 0 24px;color:#374151;font-size:16px;line-height:1.6;">
+              La invitiamo a contattarci per procedere con il rinnovo e garantire la continuit&agrave;
+              della Sua copertura assicurativa.
+            </p>`
 
   return `<!DOCTYPE html>
 <html lang="it">
@@ -33,19 +50,9 @@ export function expiryNotificationEmail(params: {
         <!-- Body -->
         <tr>
           <td style="padding:32px;">
-            <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.6;">
-              Gentile <strong>${clientName}</strong>,
-            </p>
-            <p style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.6;">
-              Le ricordiamo che la Sua polizza <strong>${typeName}</strong> n. <strong>${policyNumber}</strong>
-              scadr&agrave; il <strong>${expiryDate}</strong>.
-            </p>
-            <p style="margin:0 0 24px;color:#374151;font-size:16px;line-height:1.6;">
-              La invitiamo a contattarci per procedere con il rinnovo e garantire la continuit&agrave;
-              della Sua copertura assicurativa.
-            </p>
+            ${bodyHtml}
             <!-- CTA -->
-            <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+            <table cellpadding="0" cellspacing="0" style="margin:16px 0 24px;">
               <tr>
                 <td style="background-color:#1e3a5f;border-radius:8px;padding:12px 28px;">
                   <a href="mailto:" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;">

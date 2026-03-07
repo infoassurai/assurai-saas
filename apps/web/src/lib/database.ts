@@ -34,7 +34,7 @@ export async function updateProfile(updates: { full_name?: string; phone?: strin
 // ============================================
 // TENANT
 // ============================================
-export async function updateTenant(tenantId: string, updates: { name?: string; notification_email?: string; notification_whatsapp?: string; notification_cron_hour?: number }) {
+export async function updateTenant(tenantId: string, updates: { name?: string; notification_email?: string; notification_whatsapp?: string; notification_cron_hour?: number; notification_prefs?: Record<string, { email: boolean; whatsapp: boolean }> }) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('tenants')
@@ -695,6 +695,39 @@ export async function dismissAlert(id: string) {
   const supabase = createClient()
   const { error } = await supabase.from('alerts').update({ is_dismissed: true }).eq('id', id)
   if (error) throw error
+}
+
+// ============================================
+// NOTIFICATION TEMPLATES
+// ============================================
+export async function getNotificationTemplates() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('notification_templates')
+    .select('*')
+    .order('stage')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertNotificationTemplate(template: {
+  tenant_id: string
+  stage: string
+  channel: string
+  subject: string | null
+  body: string
+}) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('notification_templates')
+    .upsert(
+      { ...template, updated_at: new Date().toISOString() },
+      { onConflict: 'tenant_id,stage,channel' }
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return data
 }
 
 // ============================================

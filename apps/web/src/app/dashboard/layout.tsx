@@ -18,6 +18,7 @@ const navItems = [
   { href: '/dashboard/commissions', label: 'Commissioni', icon: '💰' },
   { href: '/dashboard/scadenze', label: 'Scadenze', icon: '⏰' },
   { href: '/dashboard/alerts', label: 'Alerts', icon: '🔔' },
+  { href: '/dashboard/templates', label: 'Template Invio', icon: '✉️' },
   { href: '/dashboard/settings', label: 'Impostazioni', icon: '⚙️' },
 ]
 

@@ -15,19 +15,20 @@ export async function sendWhatsappMessage(params: {
   agentName: string
   agencyName: string
   fromNumber?: string
+  customBody?: string
 }): Promise<{ success: boolean; error?: string }> {
   if (!TWILIO_SID || !TWILIO_TOKEN) {
     return { success: false, error: 'Twilio non configurato' }
   }
 
-  const { to, clientName, policyNumber, policyType, expiryDate, agentName, agencyName, fromNumber } = params
+  const { to, clientName, policyNumber, policyType, expiryDate, agentName, agencyName, fromNumber, customBody } = params
 
   const policyTypeLabels: Record<string, string> = {
     auto: 'Auto/Moto', home: 'Casa', life: 'Vita', health: 'Salute', other: 'Altro',
   }
   const typeName = policyTypeLabels[policyType] ?? policyType
 
-  const body = [
+  const body = customBody ?? [
     `Gentile ${clientName},`,
     '',
     `Le ricordiamo che la Sua polizza ${typeName} n. ${policyNumber} scade il ${expiryDate}.`,

@@ -35,6 +35,12 @@ export default function SettingsPage() {
   const [notifEmail, setNotifEmail] = useState('')
   const [notifWhatsapp, setNotifWhatsapp] = useState('')
   const [notifCronHour, setNotifCronHour] = useState(8)
+  const [notifPrefs, setNotifPrefs] = useState<Record<string, { email: boolean; whatsapp: boolean }>>({
+    '30gg': { email: true, whatsapp: false },
+    '15gg': { email: true, whatsapp: false },
+    '7gg': { email: true, whatsapp: false },
+    'scaduta': { email: true, whatsapp: false },
+  })
   const [notifSaving, setNotifSaving] = useState(false)
   const [notifMsg, setNotifMsg] = useState('')
 
@@ -78,6 +84,9 @@ export default function SettingsPage() {
         setNotifEmail(prof.tenants?.notification_email ?? '')
         setNotifWhatsapp(prof.tenants?.notification_whatsapp ?? '')
         setNotifCronHour(prof.tenants?.notification_cron_hour ?? 8)
+        if (prof.tenants?.notification_prefs) {
+          setNotifPrefs(prof.tenants.notification_prefs)
+        }
       }
     } catch (err) {
       console.error(err)
@@ -218,6 +227,7 @@ export default function SettingsPage() {
             notification_email: notifEmail || undefined,
             notification_whatsapp: notifWhatsapp || undefined,
             notification_cron_hour: notifCronHour,
+            notification_prefs: notifPrefs,
           })
           setNotifMsg('Salvato con successo')
         } catch (err: any) {
@@ -267,6 +277,57 @@ export default function SettingsPage() {
               ))}
             </select>
             <p className="text-xs text-gray-400 mt-1">Ora di invio giornaliero (CET)</p>
+          </div>
+        </div>
+
+        {/* Preferenze invio per scadenza */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quando inviare le notifiche</label>
+          <p className="text-xs text-gray-400 mb-3">Scegli per ogni fase di scadenza se inviare email, WhatsApp, entrambi o nessuno.</p>
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left px-4 py-2 font-medium text-gray-600">Scadenza</th>
+                  <th className="text-center px-4 py-2 font-medium text-gray-600">Email</th>
+                  <th className="text-center px-4 py-2 font-medium text-gray-600">WhatsApp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { key: '30gg', label: '30 giorni prima' },
+                  { key: '15gg', label: '15 giorni prima' },
+                  { key: '7gg', label: '7 giorni prima' },
+                  { key: 'scaduta', label: 'Alla scadenza' },
+                ].map((row) => (
+                  <tr key={row.key} className="border-t border-gray-100">
+                    <td className="px-4 py-2.5 text-gray-700">{row.label}</td>
+                    <td className="text-center px-4 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs[row.key]?.email ?? false}
+                        onChange={(e) => setNotifPrefs(prev => ({
+                          ...prev,
+                          [row.key]: { ...prev[row.key], email: e.target.checked },
+                        }))}
+                        className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                      />
+                    </td>
+                    <td className="text-center px-4 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs[row.key]?.whatsapp ?? false}
+                        onChange={(e) => setNotifPrefs(prev => ({
+                          ...prev,
+                          [row.key]: { ...prev[row.key], whatsapp: e.target.checked },
+                        }))}
+                        className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
