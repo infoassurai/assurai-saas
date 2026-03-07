@@ -443,10 +443,10 @@ export async function updateCommission(id: string, updates: Record<string, unkno
 // ============================================
 
 const EXPIRY_STAGES = [
-  { days: 60, label: '60gg' },
   { days: 30, label: '30gg' },
   { days: 15, label: '15gg' },
   { days: 7, label: '7gg' },
+  { days: 1, label: '1gg' },
   { days: 0, label: 'scaduta' },
 ]
 
@@ -567,9 +567,9 @@ export async function generateExpiryAlerts() {
 
   const today = new Date()
 
-  // Scadenza entro 60gg oppure scadute da max 7gg
-  const in60Days = new Date()
-  in60Days.setDate(today.getDate() + 60)
+  // Scadenza entro 30gg oppure scadute da max 7gg
+  const in30Days = new Date()
+  in30Days.setDate(today.getDate() + 30)
   const expired7DaysAgo = new Date()
   expired7DaysAgo.setDate(today.getDate() - 7)
 
@@ -578,7 +578,7 @@ export async function generateExpiryAlerts() {
     .select('id, policy_number, client_name, expiry_date')
     .eq('status', 'active')
     .gte('expiry_date', expired7DaysAgo.toISOString().split('T')[0])
-    .lte('expiry_date', in60Days.toISOString().split('T')[0])
+    .lte('expiry_date', in30Days.toISOString().split('T')[0])
 
   if (!policies || policies.length === 0) return 0
 
@@ -644,7 +644,7 @@ export async function createAlertForPolicy(policyId: string, policyNumber: strin
   if (!profile) return
 
   const daysLeft = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  if (daysLeft > 60 || daysLeft < -7) return // Entro 60gg o scadute da max 7gg
+  if (daysLeft > 30 || daysLeft < -7) return // Entro 30gg o scadute da max 7gg
 
   const stage = EXPIRY_STAGES.find(s => daysLeft <= s.days) ?? EXPIRY_STAGES[0]
   const title = `[${stage.label}] Polizza ${policyNumber} ${stage.label === 'scaduta' ? 'scaduta' : 'in scadenza'}`

@@ -4,10 +4,40 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getExpiryAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllExpiryAlertsRead, getNotificationStatus } from '@/lib/database'
 
+const TABS = [
+  { key: 'all', label: 'Tutte', color: 'bg-gray-100 text-gray-700' },
+  { key: 'scadute', label: 'Scadute', color: 'bg-red-100 text-red-700' },
+  { key: '1gg', label: '< 1 giorno', color: 'bg-red-50 text-red-600' },
+  { key: '7gg', label: '< 7 giorni', color: 'bg-orange-100 text-orange-700' },
+  { key: '15gg', label: '< 15 giorni', color: 'bg-yellow-100 text-yellow-700' },
+  { key: '30gg', label: '< 30 giorni', color: 'bg-blue-100 text-blue-700' },
+]
+
+function getDaysLeft(date: string) {
+  return Math.ceil((new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function categorize(daysLeft: number): string {
+  if (daysLeft < 0) return 'scadute'
+  if (daysLeft <= 1) return '1gg'
+  if (daysLeft <= 7) return '7gg'
+  if (daysLeft <= 15) return '15gg'
+  return '30gg'
+}
+
+function getUrgencyBorder(days: number) {
+  if (days < 0) return 'border-l-4 border-l-red-500'
+  if (days <= 1) return 'border-l-4 border-l-red-400'
+  if (days <= 7) return 'border-l-4 border-l-orange-500'
+  if (days <= 15) return 'border-l-4 border-l-yellow-400'
+  return 'border-l-4 border-l-blue-300'
+}
+
 export default function ScadenzePage() {
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showDismissed, setShowDismissed] = useState(false)
+  const [activeTab, setActiveTab] = useState('all')
   const [sentEmail, setSentEmail] = useState<Set<string>>(new Set())
   const [sentWhatsapp, setSentWhatsapp] = useState<Set<string>>(new Set())
 
@@ -47,19 +77,25 @@ export default function ScadenzePage() {
     await loadAlerts()
   }
 
-  const unreadCount = alerts.filter(a => !a.is_read).length
+  // Categorizza gli alert
+  const alertsWithDays = alerts.map(a => ({
+    ...a,
+    _daysLeft: a.due_date ? getDaysLeft(a.due_date) : 999,
+    _category: a.due_date ? categorize(getDaysLeft(a.due_date)) : '30gg',
+  }))
 
-  const getDaysLeft = (date: string) => Math.ceil((new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-  const isOverdue = (date: string) => getDaysLeft(date) < 0
-  const isSoon = (date: string) => { const d = getDaysLeft(date); return d >= 0 && d <= 7 }
-
-  const getUrgencyBorder = (date: string) => {
-    const days = getDaysLeft(date)
-    if (days < 0) return 'border-l-4 border-l-red-500'
-    if (days <= 7) return 'border-l-4 border-l-orange-500'
-    if (days <= 15) return 'border-l-4 border-l-yellow-400'
-    return ''
+  // Conteggi per tab
+  const counts: Record<string, number> = { all: alertsWithDays.length }
+  for (const a of alertsWithDays) {
+    counts[a._category] = (counts[a._category] || 0) + 1
   }
+
+  // Filtra per tab attivo
+  const filtered = activeTab === 'all'
+    ? alertsWithDays
+    : alertsWithDays.filter(a => a._category === activeTab)
+
+  const unreadCount = alerts.filter(a => !a.is_read).length
 
   return (
     <div>
@@ -93,25 +129,55 @@ export default function ScadenzePage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        {TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+              activeTab === tab.key
+                ? `${tab.color} ring-2 ring-offset-1 ring-gray-300`
+                : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            {tab.label}
+            {(counts[tab.key] ?? 0) > 0 && (
+              <span className="ml-1.5 text-xs font-bold">{counts[tab.key]}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">Caricamento...</div>
-      ) : alerts.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-          Nessuna polizza in scadenza. Le notifiche appariranno qui quando una polizza si avvicina alla scadenza.
+          {activeTab === 'all'
+            ? 'Nessuna polizza in scadenza. Le notifiche appariranno qui quando una polizza si avvicina alla scadenza.'
+            : 'Nessuna polizza in questa categoria.'}
         </div>
       ) : (
         <div className="space-y-3">
-          {alerts.map((alert) => (
+          {filtered.map((alert) => (
             <div
               key={alert.id}
               className={`bg-white rounded-xl border p-4 flex items-start gap-4 transition ${
                 !alert.is_read ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
-              } ${alert.is_dismissed ? 'opacity-50' : ''} ${alert.due_date ? getUrgencyBorder(alert.due_date) : ''}`}
+              } ${alert.is_dismissed ? 'opacity-50' : ''} ${getUrgencyBorder(alert._daysLeft)}`}
             >
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                    Scadenza
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    alert._daysLeft < 0 ? 'bg-red-100 text-red-700' :
+                    alert._daysLeft <= 1 ? 'bg-red-50 text-red-600' :
+                    alert._daysLeft <= 7 ? 'bg-orange-100 text-orange-700' :
+                    alert._daysLeft <= 15 ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {alert._daysLeft < 0 ? 'Scaduta' :
+                     alert._daysLeft <= 1 ? '< 1 giorno' :
+                     `${alert._daysLeft} giorni`}
                   </span>
                   {!alert.is_read && (
                     <span className="w-2 h-2 bg-primary-500 rounded-full" />
@@ -139,11 +205,11 @@ export default function ScadenzePage() {
                   </p>
                 )}
                 <p className={`text-xs mt-1 ${
-                  isOverdue(alert.due_date) ? 'text-red-500 font-medium' :
-                  isSoon(alert.due_date) ? 'text-yellow-600' : 'text-gray-400'
+                  alert._daysLeft < 0 ? 'text-red-500 font-medium' :
+                  alert._daysLeft <= 7 ? 'text-yellow-600' : 'text-gray-400'
                 }`}>
                   Scadenza: {new Date(alert.due_date).toLocaleDateString('it-IT')}
-                  {isOverdue(alert.due_date) && ' (scaduta)'}
+                  {alert._daysLeft < 0 && ' (scaduta)'}
                 </p>
               </div>
 
