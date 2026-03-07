@@ -494,6 +494,26 @@ export async function getOtherAlerts(showDismissed = false) {
   return data ?? []
 }
 
+export async function getNotificationStatus(policyIds: string[]) {
+  if (policyIds.length === 0) return { email: new Set<string>(), whatsapp: new Set<string>() }
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('alerts')
+    .select('policy_id, channel')
+    .eq('type', 'expiry')
+    .in('channel', ['email', 'whatsapp'])
+    .in('policy_id', policyIds)
+    .not('sent_at', 'is', null)
+  if (error) throw error
+  const email = new Set<string>()
+  const whatsapp = new Set<string>()
+  for (const a of data ?? []) {
+    if (a.channel === 'email') email.add(a.policy_id)
+    if (a.channel === 'whatsapp') whatsapp.add(a.policy_id)
+  }
+  return { email, whatsapp }
+}
+
 export async function getUnreadExpiryCount() {
   const supabase = createClient()
   const { count, error } = await supabase

@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getExpiryAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllExpiryAlertsRead } from '@/lib/database'
+import { getExpiryAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllExpiryAlertsRead, getNotificationStatus } from '@/lib/database'
 
 export default function ScadenzePage() {
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showDismissed, setShowDismissed] = useState(false)
+  const [sentEmail, setSentEmail] = useState<Set<string>>(new Set())
+  const [sentWhatsapp, setSentWhatsapp] = useState<Set<string>>(new Set())
 
   const loadAlerts = async () => {
     setLoading(true)
@@ -15,6 +17,12 @@ export default function ScadenzePage() {
       await generateExpiryAlerts()
       const data = await getExpiryAlerts(showDismissed)
       setAlerts(data)
+      const policyIds = [...new Set(data.map((a: any) => a.policy_id).filter(Boolean))]
+      if (policyIds.length > 0) {
+        const status = await getNotificationStatus(policyIds)
+        setSentEmail(status.email)
+        setSentWhatsapp(status.whatsapp)
+      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -107,6 +115,18 @@ export default function ScadenzePage() {
                   </span>
                   {!alert.is_read && (
                     <span className="w-2 h-2 bg-primary-500 rounded-full" />
+                  )}
+                  {alert.policy_id && sentEmail.has(alert.policy_id) && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700" title="Email inviata">
+                      <span className="w-2 h-2 bg-green-500 rounded-full" />
+                      Email
+                    </span>
+                  )}
+                  {alert.policy_id && sentWhatsapp.has(alert.policy_id) && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700" title="WhatsApp inviato">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+                      WhatsApp
+                    </span>
                   )}
                 </div>
                 <h3 className="font-medium text-gray-900 text-sm">{alert.title}</h3>
