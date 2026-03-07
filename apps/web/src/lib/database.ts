@@ -34,7 +34,7 @@ export async function updateProfile(updates: { full_name?: string; phone?: strin
 // ============================================
 // TENANT
 // ============================================
-export async function updateTenant(tenantId: string, updates: { name?: string }) {
+export async function updateTenant(tenantId: string, updates: { name?: string; notification_email?: string; notification_whatsapp?: string }) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('tenants')

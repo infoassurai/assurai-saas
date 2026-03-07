@@ -31,6 +31,12 @@ export default function SettingsPage() {
   const [newTodo, setNewTodo] = useState('')
   const [todoSaving, setTodoSaving] = useState(false)
 
+  // Notifiche
+  const [notifEmail, setNotifEmail] = useState('')
+  const [notifWhatsapp, setNotifWhatsapp] = useState('')
+  const [notifSaving, setNotifSaving] = useState(false)
+  const [notifMsg, setNotifMsg] = useState('')
+
   // Form compagnia
   const [newCompanyName, setNewCompanyName] = useState('')
   const [newCompanyCode, setNewCompanyCode] = useState('')
@@ -68,6 +74,8 @@ export default function SettingsPage() {
         setFullName(prof.full_name ?? '')
         setPhone(prof.phone ?? '')
         setTenantName(prof.tenants?.name ?? '')
+        setNotifEmail(prof.tenants?.notification_email ?? '')
+        setNotifWhatsapp(prof.tenants?.notification_whatsapp ?? '')
       }
     } catch (err) {
       console.error(err)
@@ -192,6 +200,68 @@ export default function SettingsPage() {
           {profileMsg && (
             <span className={`text-sm ${profileMsg.startsWith('Errore') ? 'text-red-500' : 'text-green-600'}`}>
               {profileMsg}
+            </span>
+          )}
+        </div>
+      </form>
+
+      {/* Notifiche */}
+      <form onSubmit={async (e) => {
+        e.preventDefault()
+        if (!profile?.tenant_id) return
+        setNotifSaving(true)
+        setNotifMsg('')
+        try {
+          await updateTenant(profile.tenant_id, {
+            notification_email: notifEmail || undefined,
+            notification_whatsapp: notifWhatsapp || undefined,
+          })
+          setNotifMsg('Salvato con successo')
+        } catch (err: any) {
+          setNotifMsg(`Errore: ${err.message}`)
+        } finally {
+          setNotifSaving(false)
+        }
+      }} className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">Notifiche Scadenze</h3>
+        <p className="text-sm text-gray-500">
+          Configura l&apos;email e il numero WhatsApp da cui inviare le notifiche di scadenza ai tuoi clienti.
+          Se lasci vuoto, verranno usati i valori predefiniti del sistema.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email mittente</label>
+            <input
+              type="email"
+              value={notifEmail}
+              onChange={(e) => setNotifEmail(e.target.value)}
+              placeholder="es. noreply@tuaagenzia.it"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            />
+            <p className="text-xs text-gray-400 mt-1">Richiede dominio verificato su Resend</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Numero WhatsApp</label>
+            <input
+              type="tel"
+              value={notifWhatsapp}
+              onChange={(e) => setNotifWhatsapp(e.target.value)}
+              placeholder="es. +39 333 1234567"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            />
+            <p className="text-xs text-gray-400 mt-1">Richiede account Twilio WhatsApp Business</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button type="submit" disabled={notifSaving}
+            className="bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition disabled:opacity-50">
+            {notifSaving ? 'Salvataggio...' : 'Salva Notifiche'}
+          </button>
+          {notifMsg && (
+            <span className={`text-sm ${notifMsg.startsWith('Errore') ? 'text-red-500' : 'text-green-600'}`}>
+              {notifMsg}
             </span>
           )}
         </div>
