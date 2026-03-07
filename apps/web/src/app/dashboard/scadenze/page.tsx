@@ -131,22 +131,36 @@ export default function ScadenzePage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-5">
-        {TABS.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-              activeTab === tab.key
-                ? `${tab.color} ring-2 ring-offset-1 ring-gray-300`
-                : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            {tab.label}
-            {(counts[tab.key] ?? 0) > 0 && (
-              <span className="ml-1.5 text-xs font-bold">{counts[tab.key]}</span>
-            )}
-          </button>
-        ))}
+        {TABS.map(tab => {
+          const count = counts[tab.key] ?? 0
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                activeTab === tab.key
+                  ? `${tab.color} ring-2 ring-offset-1 ring-gray-300`
+                  : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {tab.label}
+              {count > 0 && (
+                <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full text-xs font-bold px-1.5 ${
+                  activeTab === tab.key
+                    ? 'bg-white/60 text-inherit'
+                    : tab.key === 'scadute' ? 'bg-red-500 text-white'
+                    : tab.key === '1gg' ? 'bg-red-400 text-white'
+                    : tab.key === '7gg' ? 'bg-orange-500 text-white'
+                    : tab.key === '15gg' ? 'bg-yellow-500 text-white'
+                    : tab.key === '30gg' ? 'bg-blue-500 text-white'
+                    : 'bg-gray-400 text-white'
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {loading ? (
