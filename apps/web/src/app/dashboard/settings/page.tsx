@@ -34,6 +34,7 @@ export default function SettingsPage() {
   // Notifiche
   const [notifEmail, setNotifEmail] = useState('')
   const [notifWhatsapp, setNotifWhatsapp] = useState('')
+  const [notifCronHour, setNotifCronHour] = useState(8)
   const [notifSaving, setNotifSaving] = useState(false)
   const [notifMsg, setNotifMsg] = useState('')
 
@@ -76,6 +77,7 @@ export default function SettingsPage() {
         setTenantName(prof.tenants?.name ?? '')
         setNotifEmail(prof.tenants?.notification_email ?? '')
         setNotifWhatsapp(prof.tenants?.notification_whatsapp ?? '')
+        setNotifCronHour(prof.tenants?.notification_cron_hour ?? 8)
       }
     } catch (err) {
       console.error(err)
@@ -215,6 +217,7 @@ export default function SettingsPage() {
           await updateTenant(profile.tenant_id, {
             notification_email: notifEmail || undefined,
             notification_whatsapp: notifWhatsapp || undefined,
+            notification_cron_hour: notifCronHour,
           })
           setNotifMsg('Salvato con successo')
         } catch (err: any) {
@@ -229,7 +232,7 @@ export default function SettingsPage() {
           Se lasci vuoto, verranno usati i valori predefiniti del sistema.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email mittente</label>
             <input
@@ -251,6 +254,19 @@ export default function SettingsPage() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
             />
             <p className="text-xs text-gray-400 mt-1">Richiede account Twilio WhatsApp Business</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Orario invio notifiche</label>
+            <select
+              value={notifCronHour}
+              onChange={(e) => setNotifCronHour(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            >
+              {Array.from({ length: 24 }, (_, i) => (
+                <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Ora di invio giornaliero (CET)</p>
           </div>
         </div>
 

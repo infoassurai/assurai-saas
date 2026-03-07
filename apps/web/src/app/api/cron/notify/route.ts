@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
   const [tenantsRes, agentsRes] = await Promise.all([
     tenantIds.length > 0
-      ? db.from('tenants').select('id, name, notification_email, notification_whatsapp').in('id', tenantIds)
+      ? db.from('tenants').select('id, name, notification_email, notification_whatsapp, notification_cron_hour').in('id', tenantIds)
       : Promise.resolve({ data: [] }),
     agentIds.length > 0
       ? db.from('profiles').select('id, full_name').in('id', agentIds)
@@ -83,11 +83,18 @@ export async function GET(request: NextRequest) {
     errors: [] as string[],
   }
 
+  // Filtra per orario cron del tenant (ora corrente CET)
+  const currentHourCET = new Date().toLocaleString('en-US', { timeZone: 'Europe/Rome', hour: 'numeric', hour12: false })
+  const currentHour = parseInt(currentHourCET, 10)
+
   const whatsappEnabled = isWhatsappConfigured()
 
   for (const policy of contactablePolicies) {
-    const expiryFormatted = new Date(policy.expiry_date).toLocaleDateString('it-IT')
+    // Controlla se è l'ora giusta per questo tenant
     const tenant = tenantMap.get(policy.tenant_id)
+    const tenantCronHour = tenant?.notification_cron_hour ?? 8
+    if (currentHour !== tenantCronHour) continue
+    const expiryFormatted = new Date(policy.expiry_date).toLocaleDateString('it-IT')
     const agencyName = tenant?.name ?? 'Agenzia'
     const agentName = policy.agent_id ? (agentMap.get(policy.agent_id) ?? 'Il tuo agente') : 'Il tuo agente'
 
