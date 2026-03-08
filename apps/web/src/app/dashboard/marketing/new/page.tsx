@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   createCampaign,
@@ -19,7 +19,7 @@ const POLICY_TYPES = [
   { value: 'other', label: 'Altro' },
 ]
 
-export default function NewCampaignPage() {
+function NewCampaignContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get('edit')
@@ -448,5 +448,13 @@ export default function NewCampaignPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function NewCampaignPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-12 text-gray-400">Caricamento...</div>}>
+      <NewCampaignContent />
+    </Suspense>
   )
 }
