@@ -1,15 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { createPolicy, getInsuranceCompanies, checkDuplicatePolicy } from '@/lib/database'
+import { createPolicy, getPolicy, getInsuranceCompanies, checkDuplicatePolicy } from '@/lib/database'
 
 export default function NewPolicyPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const renewId = searchParams.get('renew')
   const [companies, setCompanies] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [renewFrom, setRenewFrom] = useState('')
 
   const [form, setForm] = useState({
     policy_number: '',
@@ -29,7 +32,35 @@ export default function NewPolicyPage() {
 
   useEffect(() => {
     getInsuranceCompanies().then(setCompanies).catch(console.error)
-  }, [])
+
+    if (renewId) {
+      getPolicy(renewId).then((policy) => {
+        const oldExpiry = policy.expiry_date
+        const newExpiry = oldExpiry ? (() => {
+          const d = new Date(oldExpiry)
+          d.setFullYear(d.getFullYear() + 1)
+          return d.toISOString().split('T')[0]
+        })() : ''
+
+        setRenewFrom(policy.policy_number)
+        setForm({
+          policy_number: '',
+          policy_type: policy.policy_type,
+          client_name: policy.client_name,
+          client_email: policy.client_email ?? '',
+          client_phone: policy.client_phone ?? '',
+          client_fiscal_code: policy.client_fiscal_code ?? '',
+          premium_amount: String(policy.premium_amount),
+          effective_date: oldExpiry || '',
+          expiry_date: newExpiry,
+          company_id: policy.company_id ?? '',
+          status: 'active',
+          notes: '',
+          campaign_code: '',
+        })
+      }).catch(console.error)
+    }
+  }, [renewId])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -88,6 +119,11 @@ export default function NewPolicyPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+        {renewFrom && (
+          <div className="bg-blue-50 text-blue-700 text-sm rounded-lg p-3">
+            Rinnovo della polizza N. <strong>{renewFrom}</strong> — i dati sono stati pre-compilati.
+          </div>
+        )}
         {error && (
           <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>
         )}

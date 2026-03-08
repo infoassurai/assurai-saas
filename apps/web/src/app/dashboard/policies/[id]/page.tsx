@@ -202,6 +202,12 @@ export default function PolicyDetailPage() {
                 className="bg-primary-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition">
                 Modifica
               </button>
+              {(form.status === 'active' || form.status === 'expired') && (
+                <Link href={`/dashboard/policies/new?renew=${id}`}
+                  className="px-6 py-2.5 rounded-lg text-sm font-medium text-green-700 border border-green-300 hover:bg-green-50 transition inline-flex items-center gap-1">
+                  Rinnova polizza
+                </Link>
+              )}
               <button onClick={handleDelete}
                 className="px-6 py-2.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 transition">
                 Elimina

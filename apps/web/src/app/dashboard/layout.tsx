@@ -14,6 +14,7 @@ import pkg from '../../../package.json'
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
   { href: '/dashboard/policies', label: 'Polizze', icon: '📋' },
+  { href: '/dashboard/clients', label: 'Clienti', icon: '👥' },
   { href: '/dashboard/upload', label: 'Upload', icon: '📤' },
   { href: '/dashboard/commissions', label: 'Commissioni', icon: '💰' },
   { href: '/dashboard/scadenze', label: 'Scadenze', icon: '⏰' },
@@ -166,7 +167,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
             {/* Search dropdown */}
             {searchOpen && searchResults && (
               <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-lg border border-gray-200 shadow-lg z-50 max-h-80 overflow-y-auto">
-                {searchResults.policies.length === 0 && searchResults.commissions.length === 0 ? (
+                {searchResults.policies.length === 0 && searchResults.commissions.length === 0 && (searchResults.clients?.length ?? 0) === 0 && (searchResults.campaigns?.length ?? 0) === 0 ? (
                   <div className="p-4 text-sm text-gray-400 text-center">Nessun risultato</div>
                 ) : (
                   <>
@@ -190,6 +191,45 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                               p.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                               'bg-gray-100 text-gray-500'
                             }`}>{p.status}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {searchResults.clients?.length > 0 && (
+                      <div>
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase bg-gray-50">Clienti</div>
+                        {searchResults.clients.map((c: any) => (
+                          <Link
+                            key={c.id}
+                            href={`/dashboard/clients/${c.id}`}
+                            onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+                            className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition"
+                          >
+                            <div>
+                              <span className="text-sm font-medium text-primary-600">{c.name}</span>
+                              {c.email && <span className="text-sm text-gray-400 ml-2">{c.email}</span>}
+                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 capitalize">{c.client_type || 'cliente'}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {searchResults.campaigns?.length > 0 && (
+                      <div>
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase bg-gray-50">Campagne</div>
+                        {searchResults.campaigns.map((camp: any) => (
+                          <Link
+                            key={camp.id}
+                            href={`/dashboard/marketing/${camp.id}`}
+                            onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+                            className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition"
+                          >
+                            <span className="text-sm font-medium text-primary-600">{camp.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              camp.status === 'active' ? 'bg-green-100 text-green-700' :
+                              camp.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-500'
+                            }`}>{camp.status}</span>
                           </Link>
                         ))}
                       </div>

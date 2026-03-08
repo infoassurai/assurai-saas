@@ -926,10 +926,10 @@ export async function getMonthlyCommissions() {
 }
 
 export async function globalSearch(query: string) {
-  if (!query || query.length < 2) return { policies: [], commissions: [] }
+  if (!query || query.length < 2) return { policies: [], commissions: [], clients: [], campaigns: [] }
   const supabase = createClient()
 
-  const [policiesRes, commissionsRes] = await Promise.all([
+  const [policiesRes, commissionsRes, clientsRes, campaignsRes] = await Promise.all([
     supabase
       .from('policies')
       .select('id, policy_number, client_name, status, policy_type')
@@ -940,11 +940,23 @@ export async function globalSearch(query: string) {
       .select('id, amount, status, policies(policy_number, client_name)')
       .or(`policies.client_name.ilike.%${query}%,policies.policy_number.ilike.%${query}%`)
       .limit(5),
+    supabase
+      .from('clients')
+      .select('id, name, email, fiscal_code, client_type')
+      .or(`name.ilike.%${query}%,email.ilike.%${query}%,fiscal_code.ilike.%${query}%`)
+      .limit(5),
+    supabase
+      .from('campaigns')
+      .select('id, name, status')
+      .ilike('name', `%${query}%`)
+      .limit(5),
   ])
 
   return {
     policies: policiesRes.data ?? [],
     commissions: (commissionsRes.data ?? []).filter((c: any) => c.policies),
+    clients: clientsRes.data ?? [],
+    campaigns: campaignsRes.data ?? [],
   }
 }
 
@@ -1036,6 +1048,34 @@ export async function updateClient(id: string, updates: Record<string, unknown>)
     .single()
   if (error) throw error
   return data
+}
+
+export async function deleteClient(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('clients')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function getPortfolioByCompany() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('policies')
+    .select('company_id, premium_amount, insurance_companies(name)')
+    .eq('status', 'active')
+  if (error) throw error
+
+  const map: Record<string, { company_name: string; company_id: string | null; count: number; totalPremium: number }> = {}
+  for (const p of data ?? []) {
+    const key = p.company_id || '__none__'
+    const companyName = (p as any).insurance_companies?.name || 'Senza compagnia'
+    if (!map[key]) map[key] = { company_name: companyName, company_id: p.company_id, count: 0, totalPremium: 0 }
+    map[key].count++
+    map[key].totalPremium += p.premium_amount || 0
+  }
+  return Object.values(map).sort((a, b) => b.totalPremium - a.totalPremium)
 }
 
 export async function getDistinctProfessioni() {

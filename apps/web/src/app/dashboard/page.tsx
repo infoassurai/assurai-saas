@@ -11,6 +11,7 @@ import {
   getPolicyTypeDistribution,
   getMonthlyCommissions,
   getPolicyStatusDistribution,
+  getPortfolioByCompany,
 } from '@/lib/database'
 
 const DashboardCharts = dynamic(() => import('@/components/DashboardCharts'), { ssr: false })
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   const [typeData, setTypeData] = useState<any[]>([])
   const [commissionData, setCommissionData] = useState<any[]>([])
   const [statusData, setStatusData] = useState<any[]>([])
+  const [portfolioData, setPortfolioData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -54,8 +56,9 @@ export default function DashboardPage() {
       getPolicyTypeDistribution(),
       getMonthlyCommissions(),
       getPolicyStatusDistribution(),
+      getPortfolioByCompany(),
     ])
-      .then(([s, rp, td, cd, sd]) => {
+      .then(([s, rp, td, cd, sd, pd]) => {
         setStats(s)
         setRecentPolicies(rp)
         setTypeData(td.map(d => ({ ...d, name: typeLabels[d.type] ?? d.type })))
@@ -64,6 +67,7 @@ export default function DashboardPage() {
           name: monthNames[d.month.split('-')[1]] ?? d.month,
         })))
         setStatusData(sd.map(d => ({ ...d, name: statusLabels[d.status] ?? d.status })))
+        setPortfolioData(pd)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -121,6 +125,46 @@ export default function DashboardPage() {
         typeData={typeData}
         statusData={statusData}
       />
+
+      {/* Portafoglio per Compagnia */}
+      {portfolioData.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Portafoglio per Compagnia</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-200">
+                <tr>
+                  <th className="text-left py-2 font-medium text-gray-600">Compagnia</th>
+                  <th className="text-right py-2 font-medium text-gray-600">Polizze Attive</th>
+                  <th className="text-right py-2 font-medium text-gray-600">Premio Totale</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {portfolioData.map((row) => (
+                  <tr key={row.company_id || '__none__'} className="hover:bg-gray-50">
+                    <td className="py-2">
+                      {row.company_id ? (
+                        <Link href={`/dashboard/policies?company=${row.company_id}`} className="text-primary-600 hover:underline font-medium">
+                          {row.company_name}
+                        </Link>
+                      ) : (
+                        <span className="text-gray-500 italic">{row.company_name}</span>
+                      )}
+                    </td>
+                    <td className="py-2 text-right text-gray-900">{row.count}</td>
+                    <td className="py-2 text-right text-gray-900">{fmt(row.totalPremium)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-gray-300 font-semibold">
+                  <td className="py-2 text-gray-900">Totale</td>
+                  <td className="py-2 text-right text-gray-900">{portfolioData.reduce((s, r) => s + r.count, 0)}</td>
+                  <td className="py-2 text-right text-gray-900">{fmt(portfolioData.reduce((s, r) => s + r.totalPremium, 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Attività Recente */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
