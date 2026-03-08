@@ -132,8 +132,20 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-200">
-          <span className="text-xs text-gray-400">v{pkg.version}</span>
+        <div className="p-4 border-t border-gray-200 space-y-2">
+          <Link
+            href="/dashboard/guida"
+            onClick={() => setSidebarOpen(false)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+              pathname === '/dashboard/guida'
+                ? 'bg-primary-50 text-primary-700'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+            }`}
+          >
+            <span>📖</span>
+            Guida
+          </Link>
+          <span className="text-xs text-gray-400 block px-3">v{pkg.version}</span>
         </div>
       </aside>
 
