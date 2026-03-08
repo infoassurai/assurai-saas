@@ -1,11 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createPolicy, getPolicy, getInsuranceCompanies, checkDuplicatePolicy } from '@/lib/database'
 
 export default function NewPolicyPage() {
+  return (
+    <Suspense fallback={<div className="text-gray-400 text-sm">Caricamento...</div>}>
+      <NewPolicyForm />
+    </Suspense>
+  )
+}
+
+function NewPolicyForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const renewId = searchParams.get('renew')
