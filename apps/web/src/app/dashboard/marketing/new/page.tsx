@@ -49,9 +49,29 @@ function NewCampaignContent() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
-  const [showFilters, setShowFilters] = useState(false)
   const [campaignCode, setCampaignCode] = useState('')
   const [codeCopied, setCodeCopied] = useState(false)
+
+  const activeFilterCount = [
+    policyTypes.length > 0, clientType, companyId, citta, cap, professione,
+    etaMin, etaMax, premioMin, premioMax, statusFilter, scadenzaGiorni,
+  ].filter(Boolean).length
+
+  const resetFilters = () => {
+    setPolicyTypes([])
+    setClientType('')
+    setCompanyId('')
+    setCitta('')
+    setCap('')
+    setProfessione('')
+    setEtaMin('')
+    setEtaMax('')
+    setPremioMin('')
+    setPremioMax('')
+    setStatusFilter('')
+    setScadenzaGiorni('')
+    setPreview(null)
+  }
 
   useEffect(() => {
     getInsuranceCompanies().then(setCompanies).catch(() => {})
@@ -77,7 +97,6 @@ function NewCampaignContent() {
         if (f.premio_max) setPremioMax(String(f.premio_max))
         if (f.status) setStatusFilter(f.status)
         if (f.scadenza_entro_giorni) setScadenzaGiorni(String(f.scadenza_entro_giorni))
-        setShowFilters(true)
       }).catch(() => {})
     }
   }, [editId])
@@ -234,59 +253,109 @@ function NewCampaignContent() {
         )}
       </div>
 
-      {/* Filtri target */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition"
-        >
-          <h2 className="font-semibold text-gray-900">Filtri Target</h2>
-          <span className="text-gray-400">{showFilters ? '−' : '+'}</span>
-        </button>
+      {/* Destinatari */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">Destinatari</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Scegli a chi inviare la campagna. Senza filtri, verra inviata a tutti i clienti.</p>
+          </div>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={resetFilters}
+              className="text-xs text-red-500 hover:text-red-700 font-medium transition"
+            >
+              Rimuovi filtri ({activeFilterCount})
+            </button>
+          )}
+        </div>
 
-        {showFilters && (
-          <div className="px-6 pb-6 space-y-4 border-t border-gray-100 pt-4">
-            {/* Tipo polizza */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tipo polizza</label>
-              <div className="flex flex-wrap gap-2">
-                {POLICY_TYPES.map(pt => (
-                  <button
-                    key={pt.value}
-                    onClick={() => togglePolicyType(pt.value)}
-                    className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-                      policyTypes.includes(pt.value)
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {pt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {/* Filtri Cliente */}
+        <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filtri cliente</p>
 
-            {/* Tipo cliente */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo cliente</label>
+              <label className="block text-xs text-gray-500 mb-1">Tipo cliente</label>
               <select
                 value={clientType}
                 onChange={e => setClientType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
               >
                 <option value="">Tutti</option>
                 <option value="persona">Persona</option>
                 <option value="azienda">Azienda</option>
               </select>
             </div>
-
-            {/* Compagnia */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Compagnia assicurativa</label>
+              <label className="block text-xs text-gray-500 mb-1">Professione</label>
+              <input type="text" value={professione} onChange={e => setProfessione(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
+                placeholder="Es. Medico" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Citta</label>
+              <input type="text" value={citta} onChange={e => setCitta(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
+                placeholder="Es. Roma" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">CAP</label>
+              <input type="text" value={cap} onChange={e => setCap(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
+                placeholder="Es. 00100" />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Eta min</label>
+                <input type="number" value={etaMin} onChange={e => setEtaMin(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
+                  placeholder="18" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Eta max</label>
+                <input type="number" value={etaMax} onChange={e => setEtaMax(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
+                  placeholder="65" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtri Polizza */}
+        <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filtri polizza</p>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-2">Tipo polizza</label>
+            <div className="flex flex-wrap gap-2">
+              {POLICY_TYPES.map(pt => (
+                <button
+                  key={pt.value}
+                  type="button"
+                  onClick={() => togglePolicyType(pt.value)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer ${
+                    policyTypes.includes(pt.value)
+                      ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Compagnia</label>
               <select
                 value={companyId}
                 onChange={e => setCompanyId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
               >
                 <option value="">Tutte</option>
                 {companies.map(c => (
@@ -294,108 +363,91 @@ function NewCampaignContent() {
                 ))}
               </select>
             </div>
-
-            {/* Citta + CAP + Professione */}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Citta</label>
-                <input type="text" value={citta} onChange={e => setCitta(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="Roma" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CAP</label>
-                <input type="text" value={cap} onChange={e => setCap(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="00100" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Professione</label>
-                <input type="text" value={professione} onChange={e => setProfessione(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="Medico" />
-              </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Stato polizza</label>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white">
+                <option value="">Tutti</option>
+                <option value="active">Attiva</option>
+                <option value="expired">Scaduta</option>
+                <option value="pending">In attesa</option>
+                <option value="cancelled">Annullata</option>
+              </select>
             </div>
+          </div>
 
-            {/* Eta */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Eta minima</label>
-                <input type="number" value={etaMin} onChange={e => setEtaMin(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="18" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Eta massima</label>
-                <input type="number" value={etaMax} onChange={e => setEtaMax(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="65" />
-              </div>
-            </div>
-
-            {/* Premio */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Premio min (EUR)</label>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Premio min</label>
+              <div className="relative">
                 <input type="number" value={premioMin} onChange={e => setPremioMin(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
                   placeholder="0" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">EUR</span>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Premio max (EUR)</label>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Premio max</label>
+              <div className="relative">
                 <input type="number" value={premioMax} onChange={e => setPremioMax(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
                   placeholder="5000" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">EUR</span>
               </div>
             </div>
-
-            {/* Stato polizza + Scadenza */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Stato polizza</label>
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
-                  <option value="">Tutti</option>
-                  <option value="active">Attiva</option>
-                  <option value="expired">Scaduta</option>
-                  <option value="pending">In attesa</option>
-                  <option value="cancelled">Annullata</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Scadenza entro (giorni)</label>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Scadenza entro</label>
+              <div className="relative">
                 <input type="number" value={scadenzaGiorni} onChange={e => setScadenzaGiorni(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                  className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
                   placeholder="30" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">gg</span>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Preview */}
-            <div className="pt-2">
-              <button
-                onClick={handlePreview}
-                disabled={previewLoading}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition disabled:opacity-50"
-              >
-                {previewLoading ? 'Calcolo...' : 'Anteprima destinatari'}
-              </button>
-              {preview && (
-                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm font-medium text-gray-900">
-                    {preview.count} destinatari trovati
-                  </p>
-                  {preview.sample.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {preview.sample.map((c: any) => (
-                        <li key={c.id} className="text-xs text-gray-600">
-                          {c.name} {c.email ? `(${c.email})` : ''} {c.citta ? `- ${c.citta}` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
+        {/* Anteprima destinatari */}
+        <div className="flex items-center gap-3 pt-1">
+          <button
+            onClick={handlePreview}
+            disabled={previewLoading}
+            className="px-4 py-2 bg-primary-50 text-primary-700 rounded-lg text-sm font-medium hover:bg-primary-100 border border-primary-200 transition disabled:opacity-50"
+          >
+            {previewLoading ? 'Calcolo...' : 'Verifica destinatari'}
+          </button>
+          {preview && (
+            <span className={`text-sm font-semibold ${preview.count > 0 ? 'text-green-600' : 'text-orange-500'}`}>
+              {preview.count} {preview.count === 1 ? 'destinatario' : 'destinatari'} trovati
+            </span>
+          )}
+        </div>
+
+        {preview && preview.sample.length > 0 && (
+          <div className="rounded-lg border border-gray-100 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase">
+                  <th className="px-3 py-2">Nome</th>
+                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Citta</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {preview.sample.map((c: any) => (
+                  <tr key={c.id}>
+                    <td className="px-3 py-1.5 text-sm text-gray-900">{c.name}</td>
+                    <td className="px-3 py-1.5 text-sm text-gray-500">{c.email || '-'}</td>
+                    <td className="px-3 py-1.5 text-sm text-gray-500">{c.citta || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {preview.count > preview.sample.length && (
+              <div className="px-3 py-1.5 bg-gray-50 text-xs text-gray-400 text-center">
+                ...e altri {preview.count - preview.sample.length}
+              </div>
+            )}
           </div>
         )}
       </div>
