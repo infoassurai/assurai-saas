@@ -74,6 +74,32 @@ export function replacePlaceholders(template: string, vars: {
     .replace(/\{nome_agenzia\}/g, vars.agencyName)
 }
 
+// ============================================
+// CAMPAIGN PLACEHOLDERS
+// ============================================
+export const CAMPAIGN_PLACEHOLDERS = [
+  { key: '{nome_cliente}', desc: 'Nome del cliente' },
+  { key: '{email_cliente}', desc: 'Email del cliente' },
+  { key: '{citta}', desc: 'Citta del cliente' },
+  { key: '{nome_agente}', desc: "Nome dell'agente" },
+  { key: '{nome_agenzia}', desc: "Nome dell'agenzia" },
+]
+
+export function replaceCampaignPlaceholders(template: string, vars: {
+  clientName: string
+  clientEmail?: string
+  citta?: string
+  agentName: string
+  agencyName: string
+}): string {
+  return template
+    .replace(/\{nome_cliente\}/g, vars.clientName)
+    .replace(/\{email_cliente\}/g, vars.clientEmail ?? '')
+    .replace(/\{citta\}/g, vars.citta ?? '')
+    .replace(/\{nome_agente\}/g, vars.agentName)
+    .replace(/\{nome_agenzia\}/g, vars.agencyName)
+}
+
 // Determina lo stage in base ai giorni rimanenti
 export function getStageForDays(daysLeft: number): NotificationStage | null {
   if (daysLeft >= 29 && daysLeft <= 31) return '30gg'

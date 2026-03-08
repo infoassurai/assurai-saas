@@ -9,6 +9,7 @@ import {
   getStageForDays,
   replacePlaceholders,
 } from '@/lib/notification-defaults'
+import { executeCampaignSend } from '@/lib/campaign-sender'
 
 const MAX_EMAILS_PER_RUN = 95
 
@@ -246,8 +247,45 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ============================================
+  // CAMPAGNE PROGRAMMATE
+  // ============================================
+  const campaignResults: string[] = []
+  try {
+    const { data: scheduled } = await db
+      .from('campaigns')
+      .select('id')
+      .eq('status', 'scheduled')
+      .lte('scheduled_at', new Date().toISOString())
+
+    for (const c of scheduled ?? []) {
+      try {
+        await executeCampaignSend(c.id)
+        campaignResults.push(`Campagna ${c.id}: inviata`)
+      } catch (err: any) {
+        campaignResults.push(`Campagna ${c.id}: errore - ${err.message}`)
+      }
+    }
+
+    // Riprendi campagne in stato 'sending' (invio parziale precedente)
+    const { data: sending } = await db
+      .from('campaigns')
+      .select('id')
+      .eq('status', 'sending')
+
+    for (const c of sending ?? []) {
+      try {
+        await executeCampaignSend(c.id)
+        campaignResults.push(`Campagna ${c.id}: ripresa invio`)
+      } catch (err: any) {
+        campaignResults.push(`Campagna ${c.id}: errore ripresa - ${err.message}`)
+      }
+    }
+  } catch { }
+
   return NextResponse.json({
     success: true,
     ...results,
+    campaigns: campaignResults,
   })
 }

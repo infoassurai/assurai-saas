@@ -962,6 +962,244 @@ export async function getPolicyStatusDistribution() {
 }
 
 // ============================================
+// CLIENTS
+// ============================================
+export async function getClients(filters?: {
+  search?: string
+  citta?: string
+  cap?: string
+  client_type?: string
+}) {
+  const supabase = createClient()
+  let query = supabase
+    .from('clients')
+    .select('*')
+    .order('name')
+
+  if (filters?.client_type) query = query.eq('client_type', filters.client_type)
+  if (filters?.citta) query = query.ilike('citta', `%${filters.citta}%`)
+  if (filters?.cap) query = query.eq('cap', filters.cap)
+  if (filters?.search) query = query.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%,fiscal_code.ilike.%${filters.search}%`)
+
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getClient(id: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('clients')
+    .select('*, policies(id, policy_number, policy_type, status, expiry_date, premium_amount)')
+    .eq('id', id)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function createClientRecord(client: {
+  name: string
+  email?: string
+  phone?: string
+  fiscal_code?: string
+  client_type?: string
+  data_nascita?: string
+  sesso?: string
+  professione?: string
+  citta?: string
+  cap?: string
+  indirizzo?: string
+  provincia?: string
+  notes?: string
+}) {
+  const supabase = createClient()
+  const profile = await getProfile()
+  if (!profile) throw new Error('Profilo non trovato')
+
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({ ...client, tenant_id: profile.tenant_id })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateClient(id: string, updates: Record<string, unknown>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('clients')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// ============================================
+// CAMPAIGNS
+// ============================================
+export async function getCampaigns() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('campaigns')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getCampaign(id: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('campaigns')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function createCampaign(campaign: {
+  name: string
+  channel: string
+  subject?: string
+  body: string
+  filters?: Record<string, unknown>
+  scheduled_at?: string
+  status?: string
+}) {
+  const supabase = createClient()
+  const profile = await getProfile()
+  if (!profile) throw new Error('Profilo non trovato')
+
+  const status = campaign.scheduled_at ? 'scheduled' : (campaign.status ?? 'draft')
+  const { data, error } = await supabase
+    .from('campaigns')
+    .insert({
+      ...campaign,
+      status,
+      tenant_id: profile.tenant_id,
+      created_by: profile.id,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateCampaign(id: string, updates: Record<string, unknown>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('campaigns')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCampaign(id: string) {
+  const supabase = createClient()
+  // Solo draft
+  const { error } = await supabase
+    .from('campaigns')
+    .delete()
+    .eq('id', id)
+    .eq('status', 'draft')
+  if (error) throw error
+}
+
+export async function getCampaignSends(campaignId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('campaign_sends')
+    .select('*, clients(name, email, phone)')
+    .eq('campaign_id', campaignId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function previewCampaignAudience(filters: Record<string, any>, channel: string) {
+  const supabase = createClient()
+
+  let query = supabase
+    .from('clients')
+    .select('id, name, email, phone, citta')
+
+  if (filters.client_type) query = query.eq('client_type', filters.client_type)
+  if (filters.citta) query = query.ilike('citta', `%${filters.citta}%`)
+  if (filters.cap) query = query.eq('cap', filters.cap)
+  if (filters.professione) query = query.ilike('professione', `%${filters.professione}%`)
+  if (filters.sesso) query = query.eq('sesso', filters.sesso)
+
+  if (filters.eta_min || filters.eta_max) {
+    const today = new Date()
+    if (filters.eta_max) {
+      const minBirth = new Date(today.getFullYear() - filters.eta_max - 1, today.getMonth(), today.getDate())
+      query = query.gte('data_nascita', minBirth.toISOString().split('T')[0])
+    }
+    if (filters.eta_min) {
+      const maxBirth = new Date(today.getFullYear() - filters.eta_min, today.getMonth(), today.getDate())
+      query = query.lte('data_nascita', maxBirth.toISOString().split('T')[0])
+    }
+  }
+
+  const { data: allClients, error } = await query
+  if (error) throw error
+
+  let clients = allClients ?? []
+
+  // Policy-level filters
+  const hasPolicyFilters = filters.policy_type || filters.company_id || filters.status ||
+    filters.premio_min || filters.premio_max || filters.scadenza_entro_giorni
+
+  if (hasPolicyFilters && clients.length > 0) {
+    const clientIds = clients.map(c => c.id)
+    let policyQuery = supabase
+      .from('policies')
+      .select('client_id')
+      .not('client_id', 'is', null)
+      .in('client_id', clientIds)
+
+    if (filters.policy_type && Array.isArray(filters.policy_type) && filters.policy_type.length > 0) {
+      policyQuery = policyQuery.in('policy_type', filters.policy_type)
+    }
+    if (filters.company_id) policyQuery = policyQuery.eq('company_id', filters.company_id)
+    if (filters.status) policyQuery = policyQuery.eq('status', filters.status)
+    if (filters.premio_min) policyQuery = policyQuery.gte('premium_amount', filters.premio_min)
+    if (filters.premio_max) policyQuery = policyQuery.lte('premium_amount', filters.premio_max)
+
+    if (filters.scadenza_entro_giorni) {
+      const future = new Date()
+      future.setDate(future.getDate() + filters.scadenza_entro_giorni)
+      policyQuery = policyQuery
+        .gte('expiry_date', new Date().toISOString().split('T')[0])
+        .lte('expiry_date', future.toISOString().split('T')[0])
+    }
+
+    const { data: matchingPolicies } = await policyQuery
+    const policyClientIds = new Set((matchingPolicies ?? []).map((p: any) => p.client_id))
+    clients = clients.filter(c => policyClientIds.has(c.id))
+  }
+
+  // Filter by channel availability
+  clients = clients.filter(c => {
+    if (channel === 'email') return !!c.email
+    if (channel === 'whatsapp') return !!c.phone
+    return !!c.email || !!c.phone
+  })
+
+  return {
+    count: clients.length,
+    sample: clients.slice(0, 10),
+  }
+}
+
+// ============================================
 // TODOS
 // ============================================
 export async function getTodos() {
