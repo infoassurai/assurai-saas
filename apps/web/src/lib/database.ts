@@ -122,12 +122,12 @@ export async function createPolicy(policy: {
     .select()
     .single()
 
-  // Fallback: se client_type non è nella schema cache, riprova senza
-  if (error && error.message?.includes('client_type')) {
-    const { client_type, ...policyWithoutClientType } = policy
+  // Fallback: se client_type o campaign_code non nella schema cache, riprova senza
+  if (error && (error.message?.includes('client_type') || error.message?.includes('campaign_code'))) {
+    const { client_type, campaign_code, ...policyClean } = policy
     const retry = await supabase
       .from('policies')
-      .insert({ ...policyWithoutClientType, tenant_id: profile.tenant_id, agent_id: profile.id })
+      .insert({ ...policyClean, tenant_id: profile.tenant_id, agent_id: profile.id })
       .select()
       .single()
     data = retry.data
@@ -1085,7 +1085,7 @@ export async function createCampaign(campaign: {
 
   const status = campaign.scheduled_at ? 'scheduled' : (campaign.status ?? 'draft')
   const code = generateCampaignCode()
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('campaigns')
     .insert({
       ...campaign,
@@ -1096,6 +1096,23 @@ export async function createCampaign(campaign: {
     })
     .select()
     .single()
+
+  // Fallback: se colonna code non ancora nello schema cache, riprova senza
+  if (error && error.message?.includes('code')) {
+    const retry = await supabase
+      .from('campaigns')
+      .insert({
+        ...campaign,
+        status,
+        tenant_id: profile.tenant_id,
+        created_by: profile.id,
+      })
+      .select()
+      .single()
+    data = retry.data
+    error = retry.error
+  }
+
   if (error) throw error
   return data
 }
@@ -1141,7 +1158,7 @@ export async function getCampaignPerformance(campaignCode: string) {
     .select('id, policy_number, client_name, policy_type, premium_amount, created_at')
     .eq('campaign_code', campaignCode)
     .order('created_at', { ascending: false })
-  if (error) throw error
+  if (error) return { count: 0, totalPremium: 0, policies: [] }
 
   const policies = data ?? []
   const totalPremium = policies.reduce((sum, p) => sum + Number(p.premium_amount || 0), 0)
@@ -1161,19 +1178,23 @@ export async function getCampaignsWithPerformance() {
     .order('created_at', { ascending: false })
   if (error) throw error
 
-  const codes = (campaigns ?? []).map(c => c.code).filter(Boolean)
+  const codes = (campaigns ?? []).map((c: any) => c.code).filter(Boolean)
   if (codes.length === 0) return (campaigns ?? []).map(c => ({ ...c, policy_count: 0 }))
 
-  const { data: policyCounts } = await supabase
-    .from('policies')
-    .select('campaign_code')
-    .in('campaign_code', codes)
+  let countMap: Record<string, number> = {}
+  try {
+    const { data: policyCounts } = await supabase
+      .from('policies')
+      .select('campaign_code')
+      .in('campaign_code', codes)
 
-  const countMap: Record<string, number> = {}
-  for (const p of policyCounts ?? []) {
-    if (p.campaign_code) {
-      countMap[p.campaign_code] = (countMap[p.campaign_code] || 0) + 1
+    for (const p of policyCounts ?? []) {
+      if (p.campaign_code) {
+        countMap[p.campaign_code] = (countMap[p.campaign_code] || 0) + 1
+      }
     }
+  } catch {
+    // campaign_code column may not exist yet
   }
 
   return (campaigns ?? []).map(c => ({
