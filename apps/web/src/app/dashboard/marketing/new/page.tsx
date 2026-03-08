@@ -8,6 +8,7 @@ import {
   getCampaign,
   previewCampaignAudience,
   getInsuranceCompanies,
+  getDistinctProfessioni,
 } from '@/lib/database'
 import { CAMPAIGN_PLACEHOLDERS } from '@/lib/notification-defaults'
 
@@ -36,7 +37,8 @@ function NewCampaignContent() {
   const [companyId, setCompanyId] = useState('')
   const [citta, setCitta] = useState('')
   const [cap, setCap] = useState('')
-  const [professione, setProfessione] = useState('')
+  const [professioni, setProfessioni] = useState<string[]>([])
+  const [professioniList, setProfessioniList] = useState<string[]>([])
   const [etaMin, setEtaMin] = useState('')
   const [etaMax, setEtaMax] = useState('')
   const [premioMin, setPremioMin] = useState('')
@@ -53,7 +55,7 @@ function NewCampaignContent() {
   const [codeCopied, setCodeCopied] = useState(false)
 
   const activeFilterCount = [
-    policyTypes.length > 0, clientType, companyId, citta, cap, professione,
+    policyTypes.length > 0, clientType, companyId, citta, cap, professioni.length > 0,
     etaMin, etaMax, premioMin, premioMax, statusFilter, scadenzaGiorni,
   ].filter(Boolean).length
 
@@ -63,7 +65,7 @@ function NewCampaignContent() {
     setCompanyId('')
     setCitta('')
     setCap('')
-    setProfessione('')
+    setProfessioni([])
     setEtaMin('')
     setEtaMax('')
     setPremioMin('')
@@ -73,8 +75,13 @@ function NewCampaignContent() {
     setPreview(null)
   }
 
+  const toggleProfessione = (val: string) => {
+    setProfessioni(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])
+  }
+
   useEffect(() => {
     getInsuranceCompanies().then(setCompanies).catch(() => {})
+    getDistinctProfessioni().then(setProfessioniList).catch(() => {})
     if (editId) {
       getCampaign(editId).then(c => {
         if (!c) return
@@ -90,7 +97,7 @@ function NewCampaignContent() {
         if (f.company_id) setCompanyId(f.company_id)
         if (f.citta) setCitta(f.citta)
         if (f.cap) setCap(f.cap)
-        if (f.professione) setProfessione(f.professione)
+        if (f.professione) setProfessioni(Array.isArray(f.professione) ? f.professione : [f.professione])
         if (f.eta_min) setEtaMin(String(f.eta_min))
         if (f.eta_max) setEtaMax(String(f.eta_max))
         if (f.premio_min) setPremioMin(String(f.premio_min))
@@ -108,7 +115,7 @@ function NewCampaignContent() {
     if (companyId) f.company_id = companyId
     if (citta) f.citta = citta
     if (cap) f.cap = cap
-    if (professione) f.professione = professione
+    if (professioni.length > 0) f.professione = professioni
     if (etaMin) f.eta_min = parseInt(etaMin)
     if (etaMax) f.eta_max = parseInt(etaMax)
     if (premioMin) f.premio_min = parseFloat(premioMin)
@@ -116,7 +123,7 @@ function NewCampaignContent() {
     if (statusFilter) f.status = statusFilter
     if (scadenzaGiorni) f.scadenza_entro_giorni = parseInt(scadenzaGiorni)
     return f
-  }, [policyTypes, clientType, companyId, citta, cap, professione, etaMin, etaMax, premioMin, premioMax, statusFilter, scadenzaGiorni])
+  }, [policyTypes, clientType, companyId, citta, cap, professioni, etaMin, etaMax, premioMin, premioMax, statusFilter, scadenzaGiorni])
 
   const handlePreview = async () => {
     setPreviewLoading(true)
@@ -289,9 +296,26 @@ function NewCampaignContent() {
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Professione</label>
-              <input type="text" value={professione} onChange={e => setProfessione(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white"
-                placeholder="Es. Medico" />
+              {professioniList.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 min-h-[38px] px-2 py-1.5 border border-gray-300 rounded-lg bg-white">
+                  {professioniList.map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => toggleProfessione(p)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition cursor-pointer ${
+                        professioni.includes(p)
+                          ? 'border-primary-500 bg-primary-500 text-white'
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 py-2">Nessuna professione in anagrafica</p>
+              )}
             </div>
           </div>
 

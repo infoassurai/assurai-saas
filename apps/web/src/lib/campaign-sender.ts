@@ -60,7 +60,13 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
   if (filters.client_type) query = query.eq('client_type', filters.client_type)
   if (filters.citta) query = query.ilike('citta', `%${filters.citta}%`)
   if (filters.cap) query = query.eq('cap', filters.cap)
-  if (filters.professione) query = query.ilike('professione', `%${filters.professione}%`)
+  if (filters.professione) {
+    if (Array.isArray(filters.professione) && filters.professione.length > 0) {
+      query = query.in('professione', filters.professione)
+    } else if (typeof filters.professione === 'string') {
+      query = query.ilike('professione', `%${filters.professione}%`)
+    }
+  }
   if (filters.sesso) query = query.eq('sesso', filters.sesso)
 
   if (filters.eta_min || filters.eta_max) {
