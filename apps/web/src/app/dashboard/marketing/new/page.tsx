@@ -142,7 +142,7 @@ function NewCampaignContent() {
         if (result.success) {
           alert(`Campagna inviata! ${result.sent} invii, ${result.failed} errori.`)
         } else {
-          alert(`Errore: ${result.errors?.join(', ') || result.error}`)
+          alert(`Errore: ${result.errors?.join(', ') || result.error}${result.details ? ` - ${result.details}` : ''}`)
         }
       }
 
