@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { getCampaign, getCampaignSends } from '@/lib/database'
+import { getCampaign, getCampaignSends, getCampaignPerformance } from '@/lib/database'
 
 const statusBadge: Record<string, { bg: string; text: string; label: string }> = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Bozza' },
@@ -32,8 +32,10 @@ export default function CampaignDetailPage() {
 
   const [campaign, setCampaign] = useState<any>(null)
   const [sends, setSends] = useState<any[]>([])
+  const [performance, setPerformance] = useState<{ count: number; totalPremium: number; policies: any[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [resending, setResending] = useState(false)
+  const [codeCopied, setCodeCopied] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -42,6 +44,9 @@ export default function CampaignDetailPage() {
     ]).then(([c, s]) => {
       setCampaign(c)
       setSends(s)
+      if (c?.code) {
+        getCampaignPerformance(c.code).then(setPerformance).catch(() => {})
+      }
     }).catch(() => {}).finally(() => setLoading(false))
   }, [id])
 
@@ -130,6 +135,84 @@ export default function CampaignDetailPage() {
           <p className="text-lg font-bold text-red-600 mt-1">{stats.failed}</p>
         </div>
       </div>
+
+      {/* Codice campagna */}
+      {campaign.code && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-semibold">Codice Campagna</p>
+            <p className="text-lg font-bold font-mono text-gray-900 mt-1">{campaign.code}</p>
+          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(campaign.code)
+              setCodeCopied(true)
+              setTimeout(() => setCodeCopied(false), 2000)
+            }}
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+          >
+            {codeCopied ? 'Copiato!' : 'Copia codice'}
+          </button>
+        </div>
+      )}
+
+      {/* Performance */}
+      {campaign.code && performance && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 uppercase font-semibold">Polizze generate</p>
+              <p className="text-lg font-bold text-primary-600 mt-1">{performance.count}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 uppercase font-semibold">Premio totale</p>
+              <p className="text-lg font-bold text-gray-900 mt-1">
+                {performance.totalPremium.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 uppercase font-semibold">Conversion rate</p>
+              <p className="text-lg font-bold text-gray-900 mt-1">
+                {stats.total > 0 ? `${((performance.count / stats.total) * 100).toFixed(1)}%` : '-'}
+              </p>
+            </div>
+          </div>
+
+          {performance.policies.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-700">Polizze generate ({performance.count})</h3>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase">
+                    <th className="px-4 py-2">N. Polizza</th>
+                    <th className="px-4 py-2">Cliente</th>
+                    <th className="px-4 py-2">Tipo</th>
+                    <th className="px-4 py-2">Premio</th>
+                    <th className="px-4 py-2">Data</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {performance.policies.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900">{p.policy_number}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{p.client_name}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600 capitalize">{p.policy_type}</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {Number(p.premium_amount).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-gray-500">
+                        {new Date(p.created_at).toLocaleDateString('it-IT')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Filtri applicati */}
       {filterKeys.length > 0 && (

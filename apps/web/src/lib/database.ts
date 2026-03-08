@@ -110,6 +110,7 @@ export async function createPolicy(policy: {
   company_id?: string
   status?: string
   notes?: string
+  campaign_code?: string
 }) {
   const supabase = createClient()
   const profile = await getProfile()
@@ -1061,6 +1062,14 @@ export async function getCampaign(id: string) {
   return data
 }
 
+function generateCampaignCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const random = Array.from({ length: 6 }, () =>
+    chars[Math.floor(Math.random() * chars.length)]
+  ).join('')
+  return `CAMP-${random}`
+}
+
 export async function createCampaign(campaign: {
   name: string
   channel: string
@@ -1075,10 +1084,12 @@ export async function createCampaign(campaign: {
   if (!profile) throw new Error('Profilo non trovato')
 
   const status = campaign.scheduled_at ? 'scheduled' : (campaign.status ?? 'draft')
+  const code = generateCampaignCode()
   const { data, error } = await supabase
     .from('campaigns')
     .insert({
       ...campaign,
+      code,
       status,
       tenant_id: profile.tenant_id,
       created_by: profile.id,
@@ -1121,6 +1132,54 @@ export async function getCampaignSends(campaignId: string) {
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
+}
+
+export async function getCampaignPerformance(campaignCode: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('policies')
+    .select('id, policy_number, client_name, policy_type, premium_amount, created_at')
+    .eq('campaign_code', campaignCode)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  const policies = data ?? []
+  const totalPremium = policies.reduce((sum, p) => sum + Number(p.premium_amount || 0), 0)
+
+  return {
+    count: policies.length,
+    totalPremium,
+    policies,
+  }
+}
+
+export async function getCampaignsWithPerformance() {
+  const supabase = createClient()
+  const { data: campaigns, error } = await supabase
+    .from('campaigns')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  const codes = (campaigns ?? []).map(c => c.code).filter(Boolean)
+  if (codes.length === 0) return (campaigns ?? []).map(c => ({ ...c, policy_count: 0 }))
+
+  const { data: policyCounts } = await supabase
+    .from('policies')
+    .select('campaign_code')
+    .in('campaign_code', codes)
+
+  const countMap: Record<string, number> = {}
+  for (const p of policyCounts ?? []) {
+    if (p.campaign_code) {
+      countMap[p.campaign_code] = (countMap[p.campaign_code] || 0) + 1
+    }
+  }
+
+  return (campaigns ?? []).map(c => ({
+    ...c,
+    policy_count: c.code ? (countMap[c.code] || 0) : 0,
+  }))
 }
 
 export async function previewCampaignAudience(filters: Record<string, any>, channel: string) {

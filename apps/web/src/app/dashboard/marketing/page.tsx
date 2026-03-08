@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { getCampaigns, deleteCampaign } from '@/lib/database'
+import { getCampaignsWithPerformance, deleteCampaign } from '@/lib/database'
 
 const statusBadge: Record<string, { bg: string; text: string; label: string }> = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Bozza' },
@@ -24,7 +24,7 @@ export default function MarketingPage() {
 
   const load = async () => {
     try {
-      const data = await getCampaigns()
+      const data = await getCampaignsWithPerformance()
       setCampaigns(data)
     } catch { }
     setLoading(false)
@@ -71,6 +71,7 @@ export default function MarketingPage() {
                 <th className="px-4 py-3">Canale</th>
                 <th className="px-4 py-3">Stato</th>
                 <th className="px-4 py-3">Destinatari</th>
+                <th className="px-4 py-3">Polizze</th>
                 <th className="px-4 py-3">Data</th>
                 <th className="px-4 py-3">Azioni</th>
               </tr>
@@ -94,6 +95,9 @@ export default function MarketingPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {stats.total > 0 ? `${stats.sent}/${stats.total}` : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {(c as any).policy_count > 0 ? (c as any).policy_count : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {c.sent_at

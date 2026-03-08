@@ -50,6 +50,8 @@ function NewCampaignContent() {
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [campaignCode, setCampaignCode] = useState('')
+  const [codeCopied, setCodeCopied] = useState(false)
 
   useEffect(() => {
     getInsuranceCompanies().then(setCompanies).catch(() => {})
@@ -61,6 +63,7 @@ function NewCampaignContent() {
         setSubject(c.subject ?? '')
         setBody(c.body)
         setScheduledAt(c.scheduled_at ?? '')
+        if (c.code) setCampaignCode(c.code)
         const f = c.filters ?? {}
         if (f.policy_type) setPolicyTypes(f.policy_type)
         if (f.client_type) setClientType(f.client_type)
@@ -201,6 +204,34 @@ function NewCampaignContent() {
             ))}
           </div>
         </div>
+
+        {/* Codice campagna */}
+        {campaignCode ? (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Codice campagna</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono font-semibold text-gray-900">
+                {campaignCode}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(campaignCode)
+                  setCodeCopied(true)
+                  setTimeout(() => setCodeCopied(false), 2000)
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                {codeCopied ? 'Copiato!' : 'Copia'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Inserisci questo codice quando crei una polizza originata da questa campagna</p>
+          </div>
+        ) : (
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs text-blue-600">Il codice campagna verra generato automaticamente al salvataggio</p>
+          </div>
+        )}
       </div>
 
       {/* Filtri target */}

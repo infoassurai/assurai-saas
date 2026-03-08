@@ -24,6 +24,7 @@ export default function NewPolicyPage() {
     company_id: '',
     status: 'active',
     notes: '',
+    campaign_code: '',
   })
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function NewPolicyPage() {
         ...form,
         premium_amount: parseFloat(form.premium_amount) || 0,
         company_id: form.company_id || undefined,
+        campaign_code: form.campaign_code || undefined,
       })
       router.push('/dashboard/policies')
     } catch (err: any) {
@@ -171,6 +173,16 @@ export default function NewPolicyPage() {
                 <option value="pending">In attesa</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Codice campagna (opzionale)</label>
+            <input name="campaign_code" value={form.campaign_code} onChange={handleChange}
+              placeholder="Es. CAMP-A1B2C3"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+            <p className="text-xs text-gray-400 mt-1">Se questa polizza proviene da una campagna marketing, inserisci il codice</p>
           </div>
         </div>
 
