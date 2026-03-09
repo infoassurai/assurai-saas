@@ -58,7 +58,7 @@ export async function getPolicies(filters?: {
   const supabase = createClient()
   let query = supabase
     .from('policies')
-    .select('*, insurance_companies(name), documents(id, file_path, file_name)')
+    .select('*, insurance_companies(name), documents(id, file_path, file_name), profiles:agent_id(full_name, role)')
     .order('created_at', { ascending: false })
 
   if (filters?.status) query = query.eq('status', filters.status)
@@ -149,8 +149,8 @@ export async function createPolicy(policy: {
 async function autoCreateCommission(policyId: string, premiumAmount: number, tenantId: string, agentId: string, companyId?: string, policyType?: string) {
   const supabase = createClient()
 
-  // Cerca piano provvigionale specifico per compagnia + tipo
-  let percentage = 10 // default fallback
+  // Cerca piano provvigionale specifico per compagnia + tipo (piano agente principale)
+  let mainRate = 10 // default fallback
   let planFound = false
 
   if (companyId && policyType) {
@@ -163,7 +163,7 @@ async function autoCreateCommission(policyId: string, premiumAmount: number, ten
       .single()
 
     if (plan) {
-      percentage = Number(plan.percentage)
+      mainRate = Number(plan.percentage)
       planFound = true
     }
   }
@@ -171,20 +171,63 @@ async function autoCreateCommission(policyId: string, premiumAmount: number, ten
   // Fallback: localStorage o default 10%
   if (!planFound) {
     const stored = typeof window !== 'undefined' ? localStorage.getItem('assurai_commission_pct') : null
-    if (stored) percentage = parseFloat(stored)
+    if (stored) mainRate = parseFloat(stored)
   }
 
-  const amount = (premiumAmount * percentage) / 100
+  // Controlla se il creatore è un subagente
+  const { data: creatorProfile } = await supabase
+    .from('profiles')
+    .select('role, parent_agent_id')
+    .eq('id', agentId)
+    .single()
 
-  await supabase.from('commissions').insert({
-    tenant_id: tenantId,
-    policy_id: policyId,
-    agent_id: agentId,
-    amount,
-    percentage,
-    type: 'initial',
-    status: 'pending',
-  })
+  if (creatorProfile?.role === 'subagent' && creatorProfile.parent_agent_id) {
+    // --- SPLIT COMMISSIONE: subagente + override ---
+    const subRate = await getSubAgentRate(supabase, tenantId, agentId, companyId, policyType, mainRate)
+
+    const subAmount = (premiumAmount * subRate) / 100
+    const overrideRate = mainRate - subRate
+    const overrideAmount = (premiumAmount * overrideRate) / 100
+
+    // Commissione subagente
+    const { data: subComm } = await supabase.from('commissions').insert({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      agent_id: agentId,
+      amount: subAmount,
+      percentage: subRate,
+      type: 'initial',
+      status: 'pending',
+      commission_role: 'subagent',
+    }).select().single()
+
+    // Commissione override per agente principale
+    await supabase.from('commissions').insert({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      agent_id: creatorProfile.parent_agent_id,
+      amount: overrideAmount,
+      percentage: overrideRate,
+      type: 'initial',
+      status: 'pending',
+      commission_role: 'override',
+      parent_commission_id: subComm?.id ?? null,
+    })
+  } else {
+    // --- COMMISSIONE STANDARD (agente normale) ---
+    const amount = (premiumAmount * mainRate) / 100
+
+    await supabase.from('commissions').insert({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      agent_id: agentId,
+      amount,
+      percentage: mainRate,
+      type: 'initial',
+      status: 'pending',
+      commission_role: 'agent',
+    })
+  }
 
   // Se nessun piano trovato, genera alert
   if (!planFound && companyId) {
@@ -212,12 +255,55 @@ async function autoCreateCommission(policyId: string, premiumAmount: number, ten
         tenant_id: tenantId,
         type: 'missing_plan',
         title: `Piano provvigionale mancante: ${companyName} - ${typeName}`,
-        message: `Non è stato definito un piano provvigionale per ${companyName} (${typeName}). È stata applicata la commissione default del ${percentage}%.`,
+        message: `Non è stato definito un piano provvigionale per ${companyName} (${typeName}). È stata applicata la commissione default del ${mainRate}%.`,
         due_date: new Date().toISOString().split('T')[0],
         channel: 'in_app',
       })
     }
   }
+}
+
+// Helper: cerca la percentuale subagente con priorità specifico > compagnia > globale > fallback
+async function getSubAgentRate(supabase: any, tenantId: string, subAgentId: string, companyId?: string, policyType?: string, mainRate = 10): Promise<number> {
+  // 1. Specifico: (subagente, compagnia, tipo)
+  if (companyId && policyType) {
+    const { data } = await supabase
+      .from('sub_agent_commission_plans')
+      .select('percentage')
+      .eq('tenant_id', tenantId)
+      .eq('sub_agent_id', subAgentId)
+      .eq('company_id', companyId)
+      .eq('policy_type', policyType)
+      .single()
+    if (data) return Number(data.percentage)
+  }
+
+  // 2. Per compagnia: (subagente, compagnia, NULL)
+  if (companyId) {
+    const { data } = await supabase
+      .from('sub_agent_commission_plans')
+      .select('percentage')
+      .eq('tenant_id', tenantId)
+      .eq('sub_agent_id', subAgentId)
+      .eq('company_id', companyId)
+      .is('policy_type', null)
+      .single()
+    if (data) return Number(data.percentage)
+  }
+
+  // 3. Globale: (subagente, NULL, NULL)
+  const { data } = await supabase
+    .from('sub_agent_commission_plans')
+    .select('percentage')
+    .eq('tenant_id', tenantId)
+    .eq('sub_agent_id', subAgentId)
+    .is('company_id', null)
+    .is('policy_type', null)
+    .single()
+  if (data) return Number(data.percentage)
+
+  // 4. Fallback: 50% della rata dell'agente principale
+  return mainRate * 0.5
 }
 
 export async function updatePolicy(id: string, updates: Record<string, unknown>) {
@@ -1375,4 +1461,215 @@ export async function deleteTodo(id: string) {
   const supabase = createClient()
   const { error } = await supabase.from('todos').delete().eq('id', id)
   if (error) throw error
+}
+
+// ============================================
+// SUB-AGENTS (Subagenti)
+// ============================================
+
+export async function getSubAgents() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('role', 'subagent')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getSubAgentById(id: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', id)
+    .eq('role', 'subagent')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSubAgent(id: string, updates: { full_name?: string; phone?: string; is_active?: boolean }) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', id)
+    .eq('role', 'subagent')
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deactivateSubAgent(id: string) {
+  return updateSubAgent(id, { is_active: false })
+}
+
+// ============================================
+// SUB-AGENT COMMISSION PLANS
+// ============================================
+
+export async function getSubAgentCommissionPlans(subAgentId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('sub_agent_commission_plans')
+    .select('*, insurance_companies(name)')
+    .eq('sub_agent_id', subAgentId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertSubAgentCommissionPlan(
+  subAgentId: string,
+  companyId: string | null,
+  policyType: string | null,
+  percentage: number
+) {
+  const supabase = createClient()
+  const profile = await getProfile()
+  if (!profile) throw new Error('Profilo non trovato')
+
+  const { data, error } = await supabase
+    .from('sub_agent_commission_plans')
+    .upsert(
+      {
+        tenant_id: profile.tenant_id,
+        sub_agent_id: subAgentId,
+        company_id: companyId,
+        policy_type: policyType,
+        percentage,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'tenant_id,sub_agent_id,company_id,policy_type' }
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteSubAgentCommissionPlan(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('sub_agent_commission_plans').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ============================================
+// DASHBOARD STATS - Sub-agents
+// ============================================
+
+export async function getSubAgentStats() {
+  const supabase = createClient()
+
+  // Subagenti attivi
+  const { count: activeSubAgents } = await supabase
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'subagent')
+    .eq('is_active', true)
+
+  // Override del mese corrente
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+
+  const { data: overrideData } = await supabase
+    .from('commissions')
+    .select('amount')
+    .eq('commission_role', 'override')
+    .gte('created_at', startOfMonth.toISOString())
+
+  const overrideMonth = (overrideData ?? []).reduce((sum, c) => sum + Number(c.amount), 0)
+
+  return {
+    activeSubAgents: activeSubAgents ?? 0,
+    overrideMonth,
+  }
+}
+
+export async function getSubAgentPerformance() {
+  const supabase = createClient()
+
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+
+  // Subagenti attivi
+  const { data: subAgents } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .eq('role', 'subagent')
+    .eq('is_active', true)
+
+  if (!subAgents || subAgents.length === 0) return []
+
+  const result = []
+  for (const sa of subAgents) {
+    // Polizze del mese
+    const { data: policies } = await supabase
+      .from('policies')
+      .select('id, premium_amount')
+      .eq('agent_id', sa.id)
+      .gte('created_at', startOfMonth.toISOString())
+
+    const policiesCount = policies?.length ?? 0
+    const premiumTotal = (policies ?? []).reduce((sum, p) => sum + Number(p.premium_amount), 0)
+
+    // Commissioni del mese (solo subagent role)
+    const { data: comms } = await supabase
+      .from('commissions')
+      .select('amount')
+      .eq('agent_id', sa.id)
+      .eq('commission_role', 'subagent')
+      .gte('created_at', startOfMonth.toISOString())
+
+    const commissionsTotal = (comms ?? []).reduce((sum, c) => sum + Number(c.amount), 0)
+
+    result.push({
+      id: sa.id,
+      name: sa.full_name,
+      policiesMonth: policiesCount,
+      premiumMonth: premiumTotal,
+      commissionsMonth: commissionsTotal,
+    })
+  }
+
+  return result
+}
+
+export async function getSubAgentPolicies(subAgentId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('policies')
+    .select('*, insurance_companies(name)')
+    .eq('agent_id', subAgentId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getSubAgentCommissions(subAgentId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('commissions')
+    .select('*, policies(policy_number, client_name)')
+    .eq('agent_id', subAgentId)
+    .eq('commission_role', 'subagent')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getPolicyCommissionBreakdown(policyId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('commissions')
+    .select('*, profiles:agent_id(full_name, role)')
+    .eq('policy_id', policyId)
+    .order('commission_role')
+  if (error) throw error
+  return data ?? []
 }

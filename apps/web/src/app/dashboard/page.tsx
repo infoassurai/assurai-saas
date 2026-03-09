@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
+import { useProfile } from '@/contexts/ProfileContext'
 import {
   getDashboardStats,
   getRecentPolicies,
@@ -12,6 +13,8 @@ import {
   getMonthlyCommissions,
   getPolicyStatusDistribution,
   getPortfolioByCompany,
+  getSubAgentStats,
+  getSubAgentPerformance,
 } from '@/lib/database'
 
 const DashboardCharts = dynamic(() => import('@/components/DashboardCharts'), { ssr: false })
@@ -39,12 +42,15 @@ const monthNames: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth()
+  const { isAdmin } = useProfile()
   const [stats, setStats] = useState({ activePolicies: 0, expiringPolicies: 0, monthCommissions: 0, totalDocuments: 0, totalPremium: 0, avgPremium: 0, clientiPersona: 0, clientiAzienda: 0, newPoliciesMonth: 0 })
   const [recentPolicies, setRecentPolicies] = useState<any[]>([])
   const [typeData, setTypeData] = useState<any[]>([])
   const [commissionData, setCommissionData] = useState<any[]>([])
   const [statusData, setStatusData] = useState<any[]>([])
   const [portfolioData, setPortfolioData] = useState<any[]>([])
+  const [subAgentStats, setSubAgentStats] = useState({ activeSubAgents: 0, overrideMonth: 0 })
+  const [subAgentPerf, setSubAgentPerf] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -71,6 +77,16 @@ export default function DashboardPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
+
+    // Carica stats subagenti solo per admin
+    if (isAdmin) {
+      Promise.all([getSubAgentStats(), getSubAgentPerformance()])
+        .then(([sas, sap]) => {
+          setSubAgentStats(sas)
+          setSubAgentPerf(sap)
+        })
+        .catch(() => {})
+    }
   }, [authLoading])
 
   if (authLoading || loading) {
@@ -86,8 +102,13 @@ export default function DashboardPage() {
     { label: 'Premio Portafoglio', value: fmt(stats.totalPremium), color: 'bg-green-50 text-green-700' },
     { label: 'Premio Medio', value: fmt(stats.avgPremium), color: 'bg-emerald-50 text-emerald-700' },
     { label: 'Commissioni Mese', value: fmt(stats.monthCommissions), color: 'bg-teal-50 text-teal-700' },
-    { label: 'Clienti Persona', value: String(stats.clientiPersona), color: 'bg-sky-50 text-sky-700' },
-    { label: 'Clienti Azienda', value: String(stats.clientiAzienda), color: 'bg-purple-50 text-purple-700' },
+    ...(isAdmin ? [
+      { label: 'Subagenti Attivi', value: String(subAgentStats.activeSubAgents), color: 'bg-indigo-50 text-indigo-700' },
+      { label: 'Override Mese', value: fmt(subAgentStats.overrideMonth), color: 'bg-teal-50 text-teal-700' },
+    ] : [
+      { label: 'Clienti Persona', value: String(stats.clientiPersona), color: 'bg-sky-50 text-sky-700' },
+      { label: 'Clienti Azienda', value: String(stats.clientiAzienda), color: 'bg-purple-50 text-purple-700' },
+    ]),
   ]
 
   return (
@@ -160,6 +181,44 @@ export default function DashboardPage() {
                   <td className="py-2 text-right text-gray-900">{portfolioData.reduce((s, r) => s + r.count, 0)}</td>
                   <td className="py-2 text-right text-gray-900">{fmt(portfolioData.reduce((s, r) => s + r.totalPremium, 0))}</td>
                 </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Performance Subagenti */}
+      {isAdmin && subAgentPerf.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Performance Subagenti (Mese)</h3>
+            <Link href="/dashboard/subagents" className="text-sm text-primary-600 hover:underline">
+              Gestisci
+            </Link>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-200">
+                <tr>
+                  <th className="text-left py-2 font-medium text-gray-600">Subagente</th>
+                  <th className="text-right py-2 font-medium text-gray-600">Polizze</th>
+                  <th className="text-right py-2 font-medium text-gray-600">Premi</th>
+                  <th className="text-right py-2 font-medium text-gray-600">Commissioni</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {subAgentPerf.map((sa) => (
+                  <tr key={sa.id} className="hover:bg-gray-50">
+                    <td className="py-2">
+                      <Link href={`/dashboard/subagents/${sa.id}`} className="text-primary-600 hover:underline font-medium">
+                        {sa.name}
+                      </Link>
+                    </td>
+                    <td className="py-2 text-right text-gray-900">{sa.policiesMonth}</td>
+                    <td className="py-2 text-right text-gray-900">{fmt(sa.premiumMonth)}</td>
+                    <td className="py-2 text-right text-gray-900">{fmt(sa.commissionsMonth)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

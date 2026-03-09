@@ -20,9 +20,10 @@ export interface Profile {
   id: string;
   tenantId: string;
   fullName: string;
-  role: 'admin' | 'agent' | 'viewer';
+  role: 'admin' | 'agent' | 'subagent' | 'viewer';
   phone?: string;
   avatarUrl?: string;
+  parentAgentId?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -89,6 +90,8 @@ export interface Policy {
 export type CommissionType = 'initial' | 'renewal' | 'bonus';
 export type CommissionStatus = 'pending' | 'paid' | 'cancelled';
 
+export type CommissionRole = 'agent' | 'subagent' | 'override';
+
 export interface Commission {
   id: string;
   tenantId: string;
@@ -99,8 +102,24 @@ export interface Commission {
   percentage?: number;
   type: CommissionType;
   status: CommissionStatus;
+  commissionRole?: CommissionRole;
+  parentCommissionId?: string;
   paidAt?: Date;
 
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================
+// Sub-Agent Commission Plan
+// ============================================
+export interface SubAgentCommissionPlan {
+  id: string;
+  tenantId: string;
+  subAgentId: string;
+  companyId?: string;
+  policyType?: PolicyType;
+  percentage: number;
   createdAt: Date;
   updatedAt: Date;
 }

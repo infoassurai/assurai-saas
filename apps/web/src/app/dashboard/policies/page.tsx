@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useProfile } from '@/contexts/ProfileContext'
 import { getPolicies, deletePolicy, getDocumentSignedUrl } from '@/lib/database'
 
 const statusLabels: Record<string, string> = {
@@ -39,6 +40,7 @@ const clientTypeColors: Record<string, string> = {
 
 export default function PoliciesPage() {
   const router = useRouter()
+  const { isAdmin } = useProfile()
   const [policies, setPolicies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -203,6 +205,7 @@ export default function PoliciesPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo Cliente</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Compagnia</th>
+                  {isAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Agente</th>}
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Premio</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Scadenza</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Stato</th>
@@ -232,6 +235,14 @@ export default function PoliciesPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{typeLabels[p.policy_type] ?? p.policy_type}</td>
                     <td className="px-4 py-3 text-gray-600">{p.insurance_companies?.name ?? '—'}</td>
+                    {isAdmin && (
+                      <td className="px-4 py-3 text-gray-600">
+                        {p.profiles?.full_name ?? '—'}
+                        {p.profiles?.role === 'subagent' && (
+                          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">SUB</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">
                       {Number(p.premium_amount).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
                     </td>

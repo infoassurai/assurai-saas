@@ -7,26 +7,29 @@ import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { ProfileProvider, useProfile } from '@/contexts/ProfileContext'
 import { globalSearch, getUnreadExpiryCount, getUnreadOtherAlertCount } from '@/lib/database'
 import Logo from '@/components/Logo'
 import pkg from '../../../package.json'
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/dashboard/policies', label: 'Polizze', icon: '📋' },
-  { href: '/dashboard/clients', label: 'Clienti', icon: '👥' },
-  { href: '/dashboard/upload', label: 'Upload', icon: '📤' },
-  { href: '/dashboard/commissions', label: 'Commissioni', icon: '💰' },
-  { href: '/dashboard/scadenze', label: 'Scadenze', icon: '⏰' },
-  { href: '/dashboard/alerts', label: 'Alerts', icon: '🔔' },
-  { href: '/dashboard/marketing', label: 'Marketing', icon: '📣' },
-  { href: '/dashboard/templates', label: 'Template Invio', icon: '✉️' },
-  { href: '/dashboard/settings', label: 'Impostazioni', icon: '⚙️' },
+const allNavItems = [
+  { href: '/dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'agent', 'subagent', 'viewer'] },
+  { href: '/dashboard/policies', label: 'Polizze', icon: '📋', roles: ['admin', 'agent', 'subagent', 'viewer'] },
+  { href: '/dashboard/clients', label: 'Clienti', icon: '👥', roles: ['admin', 'agent', 'subagent', 'viewer'] },
+  { href: '/dashboard/upload', label: 'Upload', icon: '📤', roles: ['admin', 'agent', 'subagent'] },
+  { href: '/dashboard/commissions', label: 'Commissioni', icon: '💰', roles: ['admin', 'agent', 'subagent'] },
+  { href: '/dashboard/scadenze', label: 'Scadenze', icon: '⏰', roles: ['admin', 'agent', 'subagent'] },
+  { href: '/dashboard/alerts', label: 'Alerts', icon: '🔔', roles: ['admin', 'agent'] },
+  { href: '/dashboard/subagents', label: 'Subagenti', icon: '🤝', roles: ['admin', 'agent'] },
+  { href: '/dashboard/marketing', label: 'Marketing', icon: '📣', roles: ['admin', 'agent'] },
+  { href: '/dashboard/templates', label: 'Template Invio', icon: '✉️', roles: ['admin', 'agent'] },
+  { href: '/dashboard/settings', label: 'Impostazioni', icon: '⚙️', roles: ['admin', 'agent', 'subagent', 'viewer'] },
 ]
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { profile } = useProfile()
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -36,6 +39,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const debounceRef = useRef<NodeJS.Timeout>(null)
   const [expiryCount, setExpiryCount] = useState(0)
   const [alertCount, setAlertCount] = useState(0)
+
+  const userRole = profile?.role ?? 'agent'
+  const navItems = allNavItems.filter(item => item.roles.includes(userRole))
 
   useEffect(() => {
     getUnreadExpiryCount().then(setExpiryCount).catch(() => {})
@@ -281,7 +287,9 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardContent>{children}</DashboardContent>
+      <ProfileProvider>
+        <DashboardContent>{children}</DashboardContent>
+      </ProfileProvider>
     </AuthProvider>
   )
 }

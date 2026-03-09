@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useProfile } from '@/contexts/ProfileContext'
 import {
   getCommissions,
   getCommissionPlans,
@@ -29,6 +30,18 @@ const commTypeLabels: Record<string, string> = {
   bonus: 'Bonus',
 }
 
+const commRoleLabels: Record<string, string> = {
+  agent: 'Diretta',
+  subagent: 'Subagente',
+  override: 'Override',
+}
+
+const commRoleColors: Record<string, string> = {
+  agent: 'bg-blue-100 text-blue-700',
+  subagent: 'bg-indigo-100 text-indigo-700',
+  override: 'bg-teal-100 text-teal-700',
+}
+
 const policyTypeLabels: Record<string, string> = {
   auto: 'Auto',
   home: 'Casa',
@@ -40,6 +53,7 @@ const policyTypeLabels: Record<string, string> = {
 const policyTypes = ['auto', 'home', 'life', 'health', 'other']
 
 export default function CommissionsPage() {
+  const { isAdmin } = useProfile()
   const [tab, setTab] = useState<'commissions' | 'plans'>('commissions')
 
   // Commissioni
@@ -171,14 +185,16 @@ export default function CommissionsPage() {
         >
           Commissioni
         </button>
-        <button
-          onClick={() => setTab('plans')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition ${
-            tab === 'plans' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Piani Provvigionali
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setTab('plans')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+              tab === 'plans' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Piani Provvigionali
+          </button>
+        )}
       </div>
 
       {tab === 'commissions' ? (
@@ -229,6 +245,7 @@ export default function CommissionsPage() {
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Polizza</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+                      {isAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Ruolo</th>}
                       <th className="text-right px-4 py-3 font-medium text-gray-600">Importo</th>
                       <th className="text-right px-4 py-3 font-medium text-gray-600">%</th>
                       <th className="text-left px-4 py-3 font-medium text-gray-600">Stato</th>
@@ -241,6 +258,15 @@ export default function CommissionsPage() {
                         <td className="px-4 py-3 text-primary-600 font-medium">{c.policies?.policy_number ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-900">{c.policies?.client_name ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{commTypeLabels[c.type] ?? c.type}</td>
+                        {isAdmin && (
+                          <td className="px-4 py-3">
+                            {c.commission_role && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${commRoleColors[c.commission_role] ?? 'bg-gray-100 text-gray-500'}`}>
+                                {commRoleLabels[c.commission_role] ?? c.commission_role}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-right text-gray-900 font-medium">{fmt(Number(c.amount))}</td>
                         <td className="px-4 py-3 text-right text-gray-600">{c.percentage ? `${c.percentage}%` : '—'}</td>
                         <td className="px-4 py-3">

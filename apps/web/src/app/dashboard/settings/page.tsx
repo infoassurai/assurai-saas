@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useProfile } from '@/contexts/ProfileContext'
 import {
   getProfile,
   updateProfile,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/database'
 
 export default function SettingsPage() {
+  const { isAdmin } = useProfile()
   const [profile, setProfile] = useState<any>(null)
   const [companies, setCompanies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -216,8 +218,8 @@ export default function SettingsPage() {
         </div>
       </form>
 
-      {/* Notifiche */}
-      <form onSubmit={async (e) => {
+      {/* Notifiche - solo admin/agent */}
+      {isAdmin && <form onSubmit={async (e) => {
         e.preventDefault()
         if (!profile?.tenant_id) return
         setNotifSaving(true)
@@ -342,9 +344,10 @@ export default function SettingsPage() {
             </span>
           )}
         </div>
-      </form>
+      </form>}
 
-      {/* Compagnie Assicurative */}
+      {/* Compagnie Assicurative - solo admin/agent */}
+      {isAdmin && <>
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-900">Compagnie Assicurative</h3>
 
@@ -386,9 +389,10 @@ export default function SettingsPage() {
           </button>
         </form>
       </div>
+      </>}
 
-      {/* TODO - Prossime implementazioni */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+      {/* TODO - Prossime implementazioni - solo admin/agent */}
+      {isAdmin && <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">TODO - Prossime Implementazioni</h3>
           <span className="text-xs text-gray-400">
@@ -445,7 +449,7 @@ export default function SettingsPage() {
             + Aggiungi
           </button>
         </form>
-      </div>
+      </div>}
     </div>
   )
 }

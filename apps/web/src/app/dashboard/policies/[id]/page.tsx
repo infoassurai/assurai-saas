@@ -3,14 +3,17 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { getPolicy, updatePolicy, deletePolicy, getInsuranceCompanies } from '@/lib/database'
+import { getPolicy, updatePolicy, deletePolicy, getInsuranceCompanies, getPolicyCommissionBreakdown } from '@/lib/database'
+import { useProfile } from '@/contexts/ProfileContext'
 
 export default function PolicyDetailPage() {
   const router = useRouter()
   const params = useParams()
   const id = params.id as string
 
+  const { isAdmin } = useProfile()
   const [companies, setCompanies] = useState<any[]>([])
+  const [commBreakdown, setCommBreakdown] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -35,8 +38,10 @@ export default function PolicyDetailPage() {
     Promise.all([
       getPolicy(id),
       getInsuranceCompanies(),
-    ]).then(([policy, comps]) => {
+      getPolicyCommissionBreakdown(id),
+    ]).then(([policy, comps, breakdown]) => {
       setCompanies(comps)
+      setCommBreakdown(breakdown)
       setForm({
         policy_number: policy.policy_number,
         policy_type: policy.policy_type,
@@ -183,6 +188,33 @@ export default function PolicyDetailPage() {
           <textarea name="notes" rows={3} value={form.notes} onChange={handleChange} readOnly={!editing}
             className={`${inputClass} resize-none`} />
         </div>
+
+        {/* Breakdown Commissioni */}
+        {isAdmin && commBreakdown.length > 0 && (
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-800 mb-3">Commissioni</h3>
+            <div className="space-y-2">
+              {commBreakdown.map((c) => {
+                const roleLabel = c.commission_role === 'subagent' ? 'Subagente' : c.commission_role === 'override' ? 'Override' : 'Diretta'
+                const roleColor = c.commission_role === 'subagent' ? 'bg-indigo-100 text-indigo-700'
+                  : c.commission_role === 'override' ? 'bg-teal-100 text-teal-700'
+                  : 'bg-blue-100 text-blue-700'
+                return (
+                  <div key={c.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColor}`}>{roleLabel}</span>
+                      <span className="text-sm text-gray-700">{c.profiles?.full_name ?? '—'}</span>
+                    </div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {Number(c.amount).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                      <span className="text-gray-400 ml-1">({c.percentage}%)</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-3 pt-2 border-t border-gray-100">
           {editing ? (
