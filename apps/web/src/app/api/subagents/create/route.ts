@@ -68,11 +68,22 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 2. Crea il profilo subagente
+    // 2. Aggiorna il profilo creato dal trigger (handle_new_user)
+    //    Il trigger crea automaticamente tenant + profile con role='admin'
+    //    Dobbiamo: aggiornare il profilo con i dati corretti e eliminare il tenant auto-creato
+
+    // Recupera il tenant auto-creato dal trigger per eliminarlo dopo
+    const { data: autoProfile } = await admin
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', newUser.user.id)
+      .single()
+    const autoTenantId = autoProfile?.tenant_id
+
+    // Aggiorna il profilo: assegna al tenant dell'agente principale
     const { error: profileError } = await admin
       .from('profiles')
-      .insert({
-        id: newUser.user.id,
+      .update({
         tenant_id: adminProfile.tenant_id,
         full_name,
         role: 'subagent',
@@ -80,6 +91,12 @@ export async function POST(req: NextRequest) {
         parent_agent_id: adminProfile.id,
         is_active: true,
       })
+      .eq('id', newUser.user.id)
+
+    // Elimina il tenant auto-creato dal trigger (il subagente usa quello dell'agente)
+    if (!profileError && autoTenantId && autoTenantId !== adminProfile.tenant_id) {
+      await admin.from('tenants').delete().eq('id', autoTenantId)
+    }
 
     if (profileError) {
       // Rollback: elimina l'utente auth
