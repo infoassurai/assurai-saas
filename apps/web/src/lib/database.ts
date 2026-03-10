@@ -1576,13 +1576,17 @@ export async function getSubAgentStats() {
   startOfMonth.setDate(1)
   startOfMonth.setHours(0, 0, 0, 0)
 
-  const { data: overrideData } = await supabase
-    .from('commissions')
-    .select('amount')
-    .eq('commission_role', 'override')
-    .gte('created_at', startOfMonth.toISOString())
-
-  const overrideMonth = (overrideData ?? []).reduce((sum, c) => sum + Number(c.amount), 0)
+  let overrideMonth = 0
+  try {
+    const { data: overrideData } = await supabase
+      .from('commissions')
+      .select('amount')
+      .eq('commission_role', 'override')
+      .gte('created_at', startOfMonth.toISOString())
+    overrideMonth = (overrideData ?? []).reduce((sum, c) => sum + Number(c.amount), 0)
+  } catch {
+    // commission_role column might not exist yet
+  }
 
   return {
     activeSubAgents: activeSubAgents ?? 0,

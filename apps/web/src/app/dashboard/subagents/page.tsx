@@ -20,14 +20,18 @@ export default function SubAgentsPage() {
 
   const loadData = async () => {
     try {
-      const [sa, st] = await Promise.all([getSubAgents(), getSubAgentStats()])
+      const sa = await getSubAgents()
       setSubAgents(sa)
+    } catch (err) {
+      console.error('Errore caricamento subagenti:', err)
+    }
+    try {
+      const st = await getSubAgentStats()
       setStats(st)
     } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+      console.error('Errore caricamento stats:', err)
     }
+    setLoading(false)
   }
 
   useEffect(() => { loadData() }, [])
