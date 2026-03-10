@@ -105,7 +105,16 @@ CREATE POLICY "Tenant isolation for commissions"
   );
 
 -- ============================================
--- 1H. Permettere a admin/agent di inserire profili (per creare subagenti)
+-- 1H. Fix policy SELECT su profiles (deve essere per tenant, non per singolo utente)
+-- ============================================
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can view profiles in their tenant" ON profiles;
+CREATE POLICY "Users can view profiles in their tenant"
+  ON profiles FOR SELECT
+  USING (tenant_id = get_user_tenant_id());
+
+-- ============================================
+-- 1I. Permettere a admin/agent di inserire profili (per creare subagenti)
 -- ============================================
 CREATE POLICY "Admin can insert profiles"
   ON profiles FOR INSERT
