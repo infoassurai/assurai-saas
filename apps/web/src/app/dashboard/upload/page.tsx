@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { uploadDocument, createPolicy, getInsuranceCompanies, createInsuranceCompany, checkDuplicatePolicy, linkDocumentToPolicy, cloneDocumentForPolicy } from '@/lib/database'
 import { parsePolicyPDF, type ParsedPolicyData } from '@/lib/pdfParser'
+import { PAYMENT_FREQUENCY_OPTIONS, type PaymentFrequency } from '@/lib/paymentUtils'
 
 
 interface ParsedItem {
@@ -219,6 +220,7 @@ export default function UploadPage() {
         effective_date: parsed.effectiveDate || new Date().toISOString().split('T')[0],
         expiry_date: parsed.expiryDate!,
         company_id: companyId,
+        payment_frequency: (parsed.paymentFrequency as PaymentFrequency) || 'annuale',
         notes: `Importata da PDF - ${parsed.companyName || 'N/D'} - ${parsed.clientType === 'azienda' ? 'Azienda' : 'Persona'}${parsed.productName ? ` - ${parsed.productName}` : ''}${parsed.plate ? ` - Targa: ${parsed.plate}` : ''}`,
       })
 
@@ -444,6 +446,16 @@ export default function UploadPage() {
                         onChange={(e) => updateParsedField(currentItem.id, 'premiumAmount', e.target.value ? parseFloat(e.target.value) : null)}
                         className={inputClass}
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Frazionamento</label>
+                      <select
+                        value={currentItem.parsed.paymentFrequency ?? 'annuale'}
+                        onChange={(e) => updateParsedField(currentItem.id, 'paymentFrequency', e.target.value)}
+                        className={inputClass}
+                      >
+                        {PAYMENT_FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
                     </div>
                   </div>
                 </div>

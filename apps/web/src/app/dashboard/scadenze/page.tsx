@@ -193,6 +193,13 @@ export default function ScadenzePage() {
                      alert._daysLeft <= 1 ? '< 1 giorno' :
                      `${alert._daysLeft} giorni`}
                   </span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                    alert.type === 'payment'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {alert.type === 'payment' ? 'Scadenza Rata' : 'Scadenza Polizza'}
+                  </span>
                   {!alert.is_read && (
                     <span className="w-2 h-2 bg-primary-500 rounded-full" />
                   )}

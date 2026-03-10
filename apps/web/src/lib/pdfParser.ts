@@ -31,6 +31,9 @@ export interface ParsedPolicyData {
   expiryDate?: string
   premiumAmount?: number
 
+  // Frazionamento pagamento
+  paymentFrequency?: 'annuale' | 'semestrale' | 'mensile' | 'rateizzata'
+
   // Testo raw per debug
   rawText?: string
 }

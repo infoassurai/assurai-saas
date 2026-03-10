@@ -10,6 +10,7 @@ import {
   replacePlaceholders,
 } from '@/lib/notification-defaults'
 import { executeCampaignSend } from '@/lib/campaign-sender'
+import { calculateNextPaymentDate, type PaymentFrequency } from '@/lib/paymentUtils'
 
 const MAX_EMAILS_PER_RUN = 95
 
@@ -38,12 +39,14 @@ export async function GET(request: NextRequest) {
   const to = new Date(today)
   to.setDate(today.getDate() + 31)
 
+  // Query polizze con scadenza polizza O scadenza rata nel range
+  const fromStr = from.toISOString().split('T')[0]
+  const toStr = to.toISOString().split('T')[0]
   const { data: policies, error: policiesError } = await db
     .from('policies')
-    .select('id, policy_number, policy_type, client_name, client_email, client_phone, expiry_date, tenant_id, agent_id')
+    .select('id, policy_number, policy_type, client_name, client_email, client_phone, effective_date, expiry_date, tenant_id, agent_id, payment_frequency, payment_expiry_date')
     .eq('status', 'active')
-    .gte('expiry_date', from.toISOString().split('T')[0])
-    .lte('expiry_date', to.toISOString().split('T')[0])
+    .or(`and(expiry_date.gte.${fromStr},expiry_date.lte.${toStr}),and(payment_expiry_date.gte.${fromStr},payment_expiry_date.lte.${toStr})`)
 
   if (policiesError) {
     return NextResponse.json({ error: 'Errore query polizze', details: policiesError.message }, { status: 500 })
@@ -60,18 +63,17 @@ export async function GET(request: NextRequest) {
   const policyIds = contactablePolicies.map(p => p.id)
   const { data: existingAlerts } = await db
     .from('alerts')
-    .select('policy_id, channel, title')
-    .eq('type', 'expiry')
+    .select('policy_id, channel, title, type')
+    .in('type', ['expiry', 'payment'])
     .in('channel', ['email', 'whatsapp'])
     .in('policy_id', policyIds)
 
-  // Set di chiavi "policyId_stage_channel" per deduplicazione
+  // Set di chiavi "policyId_stage_channel_type" per deduplicazione
   const sentKeys = new Set(
     (existingAlerts ?? []).map(a => {
-      // Estrai stage dal titolo [30gg], [15gg], [7gg], [scaduta]
       const match = a.title?.match(/^\[(\w+)\]/)
       const stage = match ? match[1] : ''
-      return `${a.policy_id}_${stage}_${a.channel}`
+      return `${a.policy_id}_${stage}_${a.channel}_${a.type}`
     })
   )
 
@@ -125,11 +127,20 @@ export async function GET(request: NextRequest) {
       (new Date(policy.expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     )
     const stage = getStageForDays(daysLeft)
-    if (!stage) continue // Non è in nessuna finestra di notifica
 
-    // Controlla preferenze del tenant per questo stage
+    // Controlla anche se c'è una rata in scadenza
+    const paymentDate = policy.payment_expiry_date
+    const paymentDaysForCheck = paymentDate
+      ? Math.ceil((new Date(paymentDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      : 999
+    const paymentStageForCheck = getStageForDays(paymentDaysForCheck)
+
+    if (!stage && !paymentStageForCheck) continue // Nessuna notifica da inviare
+
+    // Controlla preferenze del tenant per lo stage più urgente
+    const activeStage = stage || paymentStageForCheck!
     const prefs = tenant?.notification_prefs ?? DEFAULT_PREFS
-    const stagePrefs = prefs[stage] ?? { email: true, whatsapp: false }
+    const stagePrefs = prefs[activeStage] ?? { email: true, whatsapp: false }
 
     const expiryFormatted = new Date(policy.expiry_date).toLocaleDateString('it-IT')
     const agencyName = tenant?.name ?? 'Agenzia'
@@ -147,101 +158,158 @@ export async function GET(request: NextRequest) {
 
     // Recupera template personalizzati (se esistono)
     const tenantTemplates = templateMap.get(policy.tenant_id)
-    const emailTemplate = tenantTemplates?.get(stage)?.get('email')
-    const whatsappTemplate = tenantTemplates?.get(stage)?.get('whatsapp')
+    const emailTemplate = tenantTemplates?.get(activeStage)?.get('email')
+    const whatsappTemplate = tenantTemplates?.get(activeStage)?.get('whatsapp')
 
-    const titlePrefix = `[${stage}]`
-    const titleLabel = stage === 'scaduta' ? 'scaduta' : 'in scadenza'
-    const alertTitle = `${titlePrefix} Polizza ${policy.policy_number} ${titleLabel}`
+    // --- Determina le notifiche da inviare ---
+    // Notifica scadenza polizza (expiry_date)
+    // Notifica scadenza rata (payment_expiry_date) - solo se diversa da expiry_date
+    const notifications: { type: 'expiry' | 'payment'; dueDate: string; daysLeft: number; stage: string; label: string }[] = []
 
-    // --- EMAIL ---
-    if (stagePrefs.email && policy.client_email && results.email.sent < MAX_EMAILS_PER_RUN) {
-      const dedupKey = `${policy.id}_${stage}_email`
-      if (sentKeys.has(dedupKey)) {
-        results.email.skipped++
-      } else {
-        const fromEmail = tenant?.notification_email
-          ? `${agencyName} <${tenant.notification_email}>`
-          : defaultFromEmail
+    if (stage) {
+      notifications.push({
+        type: 'expiry',
+        dueDate: policy.expiry_date,
+        daysLeft,
+        stage,
+        label: `Polizza ${policy.policy_number} ${stage === 'scaduta' ? 'scaduta' : 'in scadenza'}`,
+      })
+    }
 
-        // Usa template personalizzato o default
-        const subject = emailTemplate?.subject
-          ? replacePlaceholders(emailTemplate.subject, templateVars)
-          : replacePlaceholders(DEFAULT_EMAIL_TEMPLATES[stage].subject, templateVars)
-
-        const customBody = emailTemplate?.body
-          ? replacePlaceholders(emailTemplate.body, templateVars)
-          : undefined
-
-        const html = expiryNotificationEmail({
-          ...templateVars,
-          customBody,
+    // Scadenza rata: solo se payment_expiry_date è diversa da expiry_date
+    if (paymentDate && paymentDate !== policy.expiry_date) {
+      const paymentDaysLeft = Math.ceil(
+        (new Date(paymentDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      )
+      const paymentStage = getStageForDays(paymentDaysLeft)
+      if (paymentStage) {
+        notifications.push({
+          type: 'payment',
+          dueDate: paymentDate,
+          daysLeft: paymentDaysLeft,
+          stage: paymentStage,
+          label: `Rata polizza ${policy.policy_number} ${paymentStage === 'scaduta' ? 'scaduta' : 'in scadenza'}`,
         })
+      }
+    }
 
-        try {
-          const { error: sendError } = await resend.emails.send({
-            from: fromEmail,
-            to: policy.client_email,
-            subject,
-            html,
+    for (const notif of notifications) {
+      const notifTitle = `[${notif.stage}] ${notif.label}`
+      const notifDateFormatted = new Date(notif.dueDate).toLocaleDateString('it-IT')
+      const notifMessage = notif.type === 'payment'
+        ? `La rata della polizza di ${policy.client_name} scade il ${notifDateFormatted}`
+        : (notif.daysLeft <= 0
+          ? `La polizza di ${policy.client_name} è scaduta il ${notifDateFormatted}`
+          : `La polizza di ${policy.client_name} scade tra ${notif.daysLeft} giorni (${notifDateFormatted})`)
+
+      // --- EMAIL ---
+      if (stagePrefs.email && policy.client_email && results.email.sent < MAX_EMAILS_PER_RUN) {
+        const dedupKey = `${policy.id}_${notif.stage}_email_${notif.type}`
+        if (sentKeys.has(dedupKey)) {
+          results.email.skipped++
+        } else {
+          const fromEmail = tenant?.notification_email
+            ? `${agencyName} <${tenant.notification_email}>`
+            : defaultFromEmail
+
+          const subject = emailTemplate?.subject
+            ? replacePlaceholders(emailTemplate.subject, templateVars)
+            : replacePlaceholders((DEFAULT_EMAIL_TEMPLATES as any)[notif.stage]?.subject ?? DEFAULT_EMAIL_TEMPLATES['30gg'].subject, templateVars)
+
+          const customBody = emailTemplate?.body
+            ? replacePlaceholders(emailTemplate.body, templateVars)
+            : undefined
+
+          const html = expiryNotificationEmail({
+            ...templateVars,
+            customBody,
           })
 
-          if (sendError) {
-            results.errors.push(`Email ${policy.client_email} [${stage}]: ${sendError.message}`)
-          } else {
-            await db.from('alerts').insert({
-              tenant_id: policy.tenant_id,
-              policy_id: policy.id,
-              type: 'expiry',
-              title: alertTitle,
-              message: `Email inviata a ${policy.client_email} - La polizza di ${policy.client_name} scade il ${expiryFormatted}`,
-              due_date: policy.expiry_date,
-              channel: 'email',
-              sent_at: new Date().toISOString(),
+          try {
+            const { error: sendError } = await resend.emails.send({
+              from: fromEmail,
+              to: policy.client_email,
+              subject: notif.type === 'payment' ? `Scadenza rata - ${policy.policy_number}` : subject,
+              html,
             })
-            results.email.sent++
+
+            if (sendError) {
+              results.errors.push(`Email ${policy.client_email} [${notif.stage}/${notif.type}]: ${sendError.message}`)
+            } else {
+              await db.from('alerts').insert({
+                tenant_id: policy.tenant_id,
+                policy_id: policy.id,
+                type: notif.type,
+                title: notifTitle,
+                message: `Email inviata a ${policy.client_email} - ${notifMessage}`,
+                due_date: notif.dueDate,
+                channel: 'email',
+                sent_at: new Date().toISOString(),
+              })
+              results.email.sent++
+              sentKeys.add(dedupKey)
+            }
+          } catch (err: any) {
+            results.errors.push(`Email ${policy.client_email} [${notif.stage}/${notif.type}]: ${err.message ?? 'Errore'}`)
           }
-        } catch (err: any) {
-          results.errors.push(`Email ${policy.client_email} [${stage}]: ${err.message ?? 'Errore'}`)
+        }
+      }
+
+      // --- WHATSAPP ---
+      if (stagePrefs.whatsapp && whatsappEnabled && policy.client_phone) {
+        const dedupKey = `${policy.id}_${notif.stage}_whatsapp_${notif.type}`
+        if (sentKeys.has(dedupKey)) {
+          results.whatsapp.skipped++
+        } else {
+          const customBody = whatsappTemplate?.body
+            ? replacePlaceholders(whatsappTemplate.body, templateVars)
+            : undefined
+
+          try {
+            const waResult = await sendWhatsappMessage({
+              ...templateVars,
+              to: policy.client_phone,
+              fromNumber: tenant?.notification_whatsapp,
+              customBody,
+            })
+
+            if (!waResult.success) {
+              results.errors.push(`WhatsApp ${policy.client_phone} [${notif.stage}/${notif.type}]: ${waResult.error}`)
+            } else {
+              await db.from('alerts').insert({
+                tenant_id: policy.tenant_id,
+                policy_id: policy.id,
+                type: notif.type,
+                title: notifTitle,
+                message: `WhatsApp inviato a ${policy.client_phone} - ${notifMessage}`,
+                due_date: notif.dueDate,
+                channel: 'whatsapp',
+                sent_at: new Date().toISOString(),
+              })
+              results.whatsapp.sent++
+              sentKeys.add(dedupKey)
+            }
+          } catch (err: any) {
+            results.errors.push(`WhatsApp ${policy.client_phone} [${notif.stage}/${notif.type}]: ${err.message ?? 'Errore'}`)
+          }
         }
       }
     }
 
-    // --- WHATSAPP ---
-    if (stagePrefs.whatsapp && whatsappEnabled && policy.client_phone) {
-      const dedupKey = `${policy.id}_${stage}_whatsapp`
-      if (sentKeys.has(dedupKey)) {
-        results.whatsapp.skipped++
-      } else {
-        const customBody = whatsappTemplate?.body
-          ? replacePlaceholders(whatsappTemplate.body, templateVars)
-          : undefined
-
-        try {
-          const waResult = await sendWhatsappMessage({
-            ...templateVars,
-            to: policy.client_phone,
-            fromNumber: tenant?.notification_whatsapp,
-            customBody,
-          })
-
-          if (!waResult.success) {
-            results.errors.push(`WhatsApp ${policy.client_phone} [${stage}]: ${waResult.error}`)
-          } else {
-            await db.from('alerts').insert({
-              tenant_id: policy.tenant_id,
-              policy_id: policy.id,
-              type: 'expiry',
-              title: alertTitle,
-              message: `WhatsApp inviato a ${policy.client_phone} - La polizza di ${policy.client_name} scade il ${expiryFormatted}`,
-              due_date: policy.expiry_date,
-              channel: 'whatsapp',
-              sent_at: new Date().toISOString(),
-            })
-            results.whatsapp.sent++
-          }
-        } catch (err: any) {
-          results.errors.push(`WhatsApp ${policy.client_phone} [${stage}]: ${err.message ?? 'Errore'}`)
+    // Dopo notifica rata, ricalcola payment_expiry_date alla prossima data futura
+    if (policy.payment_expiry_date && policy.payment_frequency && policy.payment_frequency !== 'annuale') {
+      const paymentDaysLeft = Math.ceil(
+        (new Date(policy.payment_expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      )
+      if (paymentDaysLeft <= 0) {
+        // La rata è scaduta, ricalcola alla prossima
+        const nextPayment = calculateNextPaymentDate(
+          policy.effective_date ?? policy.expiry_date,
+          policy.expiry_date,
+          policy.payment_frequency as PaymentFrequency
+        )
+        if (nextPayment !== policy.payment_expiry_date) {
+          await db.from('policies').update({ payment_expiry_date: nextPayment }).eq('id', policy.id)
         }
       }
     }

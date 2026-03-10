@@ -38,6 +38,22 @@ const clientTypeColors: Record<string, string> = {
   azienda: 'bg-purple-100 text-purple-700',
 }
 
+const frequencyLabels: Record<string, string> = {
+  annuale: 'Annuale',
+  semestrale: 'Semestrale',
+  mensile: 'Mensile',
+  rateizzata: 'Rateizzata',
+}
+
+function getPaymentExpiryColor(dateStr: string | null): string {
+  if (!dateStr) return 'text-gray-400'
+  const days = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return 'text-red-600 font-semibold'
+  if (days <= 7) return 'text-orange-600 font-medium'
+  if (days <= 30) return 'text-yellow-600'
+  return 'text-gray-600'
+}
+
 export default function PoliciesPage() {
   const router = useRouter()
   const { isAdmin } = useProfile()
@@ -86,7 +102,7 @@ export default function PoliciesPage() {
 
   const exportCSV = () => {
     if (policies.length === 0) return
-    const headers = ['N. Polizza', 'Cliente', 'Tipo Cliente', 'Tipo', 'Compagnia', 'Premio', 'Decorrenza', 'Scadenza', 'Stato']
+    const headers = ['N. Polizza', 'Cliente', 'Tipo Cliente', 'Tipo', 'Compagnia', 'Premio', 'Decorrenza', 'Scadenza', 'Frazionamento', 'Scad. Rata', 'Stato']
     const rows = policies.map(p => [
       p.policy_number,
       p.client_name,
@@ -96,6 +112,8 @@ export default function PoliciesPage() {
       Number(p.premium_amount).toFixed(2),
       new Date(p.effective_date).toLocaleDateString('it-IT'),
       new Date(p.expiry_date).toLocaleDateString('it-IT'),
+      frequencyLabels[p.payment_frequency] ?? 'Annuale',
+      p.payment_expiry_date ? new Date(p.payment_expiry_date).toLocaleDateString('it-IT') : '',
       statusLabels[p.status] ?? p.status,
     ])
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
@@ -208,6 +226,7 @@ export default function PoliciesPage() {
                   {isAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Agente</th>}
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Premio</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Scadenza</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Scad. Rata</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Stato</th>
                   <th className="text-center px-4 py-3 font-medium text-gray-600">Azioni</th>
                 </tr>
@@ -248,6 +267,14 @@ export default function PoliciesPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">
                       {new Date(p.expiry_date).toLocaleDateString('it-IT')}
+                    </td>
+                    <td className={`px-4 py-3 ${getPaymentExpiryColor(p.payment_expiry_date)}`}>
+                      {p.payment_expiry_date
+                        ? new Date(p.payment_expiry_date).toLocaleDateString('it-IT')
+                        : '—'}
+                      {p.payment_frequency && p.payment_frequency !== 'annuale' && (
+                        <span className="block text-[10px] text-gray-400">{frequencyLabels[p.payment_frequency]}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[p.status]}`}>

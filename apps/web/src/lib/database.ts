@@ -1,4 +1,5 @@
 import { createClient } from './supabase'
+import { calculateNextPaymentDate, type PaymentFrequency } from './paymentUtils'
 
 // ============================================
 // PROFILE
@@ -111,20 +112,35 @@ export async function createPolicy(policy: {
   status?: string
   notes?: string
   campaign_code?: string
+  payment_frequency?: PaymentFrequency
 }) {
   const supabase = createClient()
   const profile = await getProfile()
   if (!profile) throw new Error('Profilo non trovato')
 
+  // Calcola scadenza rata
+  const frequency = policy.payment_frequency || 'annuale'
+  const payment_expiry_date = calculateNextPaymentDate(
+    policy.effective_date,
+    policy.expiry_date,
+    frequency
+  )
+
+  const policyWithPayment = {
+    ...policy,
+    payment_frequency: frequency,
+    payment_expiry_date,
+  }
+
   let { data, error } = await supabase
     .from('policies')
-    .insert({ ...policy, tenant_id: profile.tenant_id, agent_id: profile.id })
+    .insert({ ...policyWithPayment, tenant_id: profile.tenant_id, agent_id: profile.id })
     .select()
     .single()
 
-  // Fallback: se client_type o campaign_code non nella schema cache, riprova senza
-  if (error && (error.message?.includes('client_type') || error.message?.includes('campaign_code'))) {
-    const { client_type, campaign_code, ...policyClean } = policy
+  // Fallback: se colonne nuove non nella schema cache, riprova senza
+  if (error && (error.message?.includes('client_type') || error.message?.includes('campaign_code') || error.message?.includes('payment_frequency') || error.message?.includes('payment_expiry_date'))) {
+    const { client_type, campaign_code, payment_frequency, payment_expiry_date: _ped, ...policyClean } = policyWithPayment
     const retry = await supabase
       .from('policies')
       .insert({ ...policyClean, tenant_id: profile.tenant_id, agent_id: profile.id })
@@ -308,6 +324,16 @@ async function getSubAgentRate(supabase: any, tenantId: string, subAgentId: stri
 
 export async function updatePolicy(id: string, updates: Record<string, unknown>) {
   const supabase = createClient()
+
+  // Se cambiano frequenza, decorrenza o scadenza → ricalcola payment_expiry_date
+  const freq = (updates.payment_frequency as PaymentFrequency) || undefined
+  const effDate = updates.effective_date as string | undefined
+  const expDate = updates.expiry_date as string | undefined
+
+  if (freq && effDate && expDate) {
+    updates.payment_expiry_date = calculateNextPaymentDate(effDate, expDate, freq)
+  }
+
   const { data, error } = await supabase
     .from('policies')
     .update(updates)
@@ -556,7 +582,7 @@ export async function getExpiryAlerts(showDismissed = false) {
   let query = supabase
     .from('alerts')
     .select('*, policies(policy_number, client_name)')
-    .eq('type', 'expiry')
+    .in('type', ['expiry', 'payment'])
     .order('due_date', { ascending: true })
 
   if (!showDismissed) query = query.eq('is_dismissed', false)
@@ -587,7 +613,7 @@ export async function getNotificationStatus(policyIds: string[]) {
   const { data, error } = await supabase
     .from('alerts')
     .select('policy_id, channel')
-    .eq('type', 'expiry')
+    .in('type', ['expiry', 'payment'])
     .in('channel', ['email', 'whatsapp'])
     .in('policy_id', policyIds)
     .not('sent_at', 'is', null)
@@ -630,7 +656,7 @@ export async function markAllExpiryAlertsRead() {
   const { error } = await supabase
     .from('alerts')
     .update({ is_read: true })
-    .eq('type', 'expiry')
+    .in('type', ['expiry', 'payment'])
     .eq('is_read', false)
     .eq('is_dismissed', false)
   if (error) throw error
@@ -660,25 +686,27 @@ export async function generateExpiryAlerts() {
   const expired7DaysAgo = new Date()
   expired7DaysAgo.setDate(today.getDate() - 7)
 
+  const fromStr = expired7DaysAgo.toISOString().split('T')[0]
+  const toStr = in30Days.toISOString().split('T')[0]
+
   const { data: policies } = await supabase
     .from('policies')
-    .select('id, policy_number, client_name, expiry_date')
+    .select('id, policy_number, client_name, expiry_date, payment_frequency, payment_expiry_date')
     .eq('status', 'active')
-    .gte('expiry_date', expired7DaysAgo.toISOString().split('T')[0])
-    .lte('expiry_date', in30Days.toISOString().split('T')[0])
+    .or(`and(expiry_date.gte.${fromStr},expiry_date.lte.${toStr}),and(payment_expiry_date.gte.${fromStr},payment_expiry_date.lte.${toStr})`)
 
   if (!policies || policies.length === 0) return 0
 
-  // Alert esistenti per queste polizze (tipo expiry)
+  // Alert esistenti per queste polizze (tipo expiry e payment)
   const policyIds = policies.map(p => p.id)
   const { data: existingAlerts } = await supabase
     .from('alerts')
-    .select('policy_id, title')
-    .eq('type', 'expiry')
+    .select('policy_id, title, type')
+    .in('type', ['expiry', 'payment'])
     .in('policy_id', policyIds)
 
   const existingKeys = new Set(
-    (existingAlerts ?? []).map(a => `${a.policy_id}_${a.title}`)
+    (existingAlerts ?? []).map(a => `${a.policy_id}_${a.type}_${a.title}`)
   )
 
   const newAlerts: Array<{
@@ -692,30 +720,61 @@ export async function generateExpiryAlerts() {
   }> = []
 
   for (const p of policies) {
+    // Alert scadenza polizza
     const daysLeft = Math.ceil(
       (new Date(p.expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     )
 
-    // Determina lo stage corretto
-    const stage = EXPIRY_STAGES.find(s => daysLeft <= s.days) ?? EXPIRY_STAGES[0]
-    const title = `[${stage.label}] Polizza ${p.policy_number} ${stage.label === 'scaduta' ? 'scaduta' : 'in scadenza'}`
-    const key = `${p.id}_${title}`
+    if (daysLeft >= -7 && daysLeft <= 30) {
+      const stage = EXPIRY_STAGES.find(s => daysLeft <= s.days) ?? EXPIRY_STAGES[0]
+      const title = `[${stage.label}] Polizza ${p.policy_number} ${stage.label === 'scaduta' ? 'scaduta' : 'in scadenza'}`
+      const key = `${p.id}_expiry_${title}`
 
-    if (existingKeys.has(key)) continue
+      if (!existingKeys.has(key)) {
+        const message = daysLeft <= 0
+          ? `La polizza di ${p.client_name} è scaduta il ${new Date(p.expiry_date).toLocaleDateString('it-IT')}`
+          : `La polizza di ${p.client_name} scade tra ${daysLeft} giorni (${new Date(p.expiry_date).toLocaleDateString('it-IT')})`
 
-    const message = daysLeft <= 0
-      ? `La polizza di ${p.client_name} è scaduta il ${new Date(p.expiry_date).toLocaleDateString('it-IT')}`
-      : `La polizza di ${p.client_name} scade tra ${daysLeft} giorni (${new Date(p.expiry_date).toLocaleDateString('it-IT')})`
+        newAlerts.push({
+          tenant_id: profile.tenant_id,
+          policy_id: p.id,
+          type: 'expiry',
+          title,
+          message,
+          due_date: p.expiry_date,
+          channel: 'in_app',
+        })
+      }
+    }
 
-    newAlerts.push({
-      tenant_id: profile.tenant_id,
-      policy_id: p.id,
-      type: 'expiry',
-      title,
-      message,
-      due_date: p.expiry_date,
-      channel: 'in_app',
-    })
+    // Alert scadenza rata (solo se diversa da scadenza polizza)
+    if (p.payment_expiry_date && p.payment_expiry_date !== p.expiry_date) {
+      const payDaysLeft = Math.ceil(
+        (new Date(p.payment_expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      )
+
+      if (payDaysLeft >= -7 && payDaysLeft <= 30) {
+        const payStage = EXPIRY_STAGES.find(s => payDaysLeft <= s.days) ?? EXPIRY_STAGES[0]
+        const payTitle = `[${payStage.label}] Rata polizza ${p.policy_number} ${payStage.label === 'scaduta' ? 'scaduta' : 'in scadenza'}`
+        const payKey = `${p.id}_payment_${payTitle}`
+
+        if (!existingKeys.has(payKey)) {
+          const payMessage = payDaysLeft <= 0
+            ? `La rata della polizza di ${p.client_name} è scaduta il ${new Date(p.payment_expiry_date).toLocaleDateString('it-IT')}`
+            : `La rata della polizza di ${p.client_name} scade tra ${payDaysLeft} giorni (${new Date(p.payment_expiry_date).toLocaleDateString('it-IT')})`
+
+          newAlerts.push({
+            tenant_id: profile.tenant_id,
+            policy_id: p.id,
+            type: 'payment',
+            title: payTitle,
+            message: payMessage,
+            due_date: p.payment_expiry_date,
+            channel: 'in_app',
+          })
+        }
+      }
+    }
   }
 
   if (newAlerts.length > 0) {

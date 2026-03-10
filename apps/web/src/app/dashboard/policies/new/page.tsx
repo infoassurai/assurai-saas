@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createPolicy, getPolicy, getInsuranceCompanies, checkDuplicatePolicy } from '@/lib/database'
+import { calculateNextPaymentDate, PAYMENT_FREQUENCY_OPTIONS, type PaymentFrequency } from '@/lib/paymentUtils'
 
 export default function NewPolicyPage() {
   return (
@@ -36,6 +37,7 @@ function NewPolicyForm() {
     status: 'active',
     notes: '',
     campaign_code: '',
+    payment_frequency: 'annuale' as PaymentFrequency,
   })
 
   useEffect(() => {
@@ -65,6 +67,7 @@ function NewPolicyForm() {
           status: 'active',
           notes: '',
           campaign_code: '',
+          payment_frequency: policy.payment_frequency || 'annuale',
         })
       }).catch(console.error)
     }
@@ -82,6 +85,7 @@ function NewPolicyForm() {
         premium_amount: parseFloat(form.premium_amount) || 0,
         company_id: form.company_id || undefined,
         campaign_code: form.campaign_code || undefined,
+        payment_frequency: form.payment_frequency,
       })
       router.push('/dashboard/policies')
     } catch (err: any) {
@@ -209,6 +213,23 @@ function NewPolicyForm() {
               <input name="expiry_date" type="date" required value={form.expiry_date} onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Frazionamento</label>
+              <select name="payment_frequency" value={form.payment_frequency} onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
+                {PAYMENT_FREQUENCY_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            {form.effective_date && form.expiry_date && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Prossima Scadenza Rata</label>
+                <input type="date" readOnly
+                  value={calculateNextPaymentDate(form.effective_date, form.expiry_date, form.payment_frequency)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 cursor-default" />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Stato</label>
               <select name="status" value={form.status} onChange={handleChange}
