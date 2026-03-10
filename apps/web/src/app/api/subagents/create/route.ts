@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     const autoTenantId = autoProfile?.tenant_id
 
     // Aggiorna il profilo: assegna al tenant dell'agente principale
-    const { error: profileError } = await admin
+    const { data: updatedProfile, error: profileError } = await admin
       .from('profiles')
       .update({
         tenant_id: adminProfile.tenant_id,
@@ -92,19 +92,30 @@ export async function POST(req: NextRequest) {
         is_active: true,
       })
       .eq('id', newUser.user.id)
-
-    // Elimina il tenant auto-creato dal trigger (il subagente usa quello dell'agente)
-    if (!profileError && autoTenantId && autoTenantId !== adminProfile.tenant_id) {
-      await admin.from('tenants').delete().eq('id', autoTenantId)
-    }
+      .select()
+      .single()
 
     if (profileError) {
       // Rollback: elimina l'utente auth
       await admin.auth.admin.deleteUser(newUser.user.id)
       return NextResponse.json(
-        { error: `Errore creazione profilo: ${profileError.message}` },
+        { error: `Errore aggiornamento profilo: ${profileError.message}` },
         { status: 500 }
       )
+    }
+
+    // Verifica che l'update abbia funzionato
+    if (!updatedProfile || updatedProfile.role !== 'subagent') {
+      await admin.auth.admin.deleteUser(newUser.user.id)
+      return NextResponse.json(
+        { error: `Profilo non aggiornato correttamente. Role: ${updatedProfile?.role}, Tenant: ${updatedProfile?.tenant_id}` },
+        { status: 500 }
+      )
+    }
+
+    // Elimina il tenant auto-creato dal trigger (il subagente usa quello dell'agente)
+    if (autoTenantId && autoTenantId !== adminProfile.tenant_id) {
+      await admin.from('tenants').delete().eq('id', autoTenantId)
     }
 
     return NextResponse.json({
@@ -113,6 +124,8 @@ export async function POST(req: NextRequest) {
         id: newUser.user.id,
         email,
         full_name,
+        tenant_id: updatedProfile.tenant_id,
+        role: updatedProfile.role,
       },
     })
   } catch (err: any) {
