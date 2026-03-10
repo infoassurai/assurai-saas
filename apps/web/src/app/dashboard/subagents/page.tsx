@@ -21,7 +21,6 @@ export default function SubAgentsPage() {
   const loadData = async () => {
     try {
       const sa = await getSubAgents()
-      console.log('SubAgents risultato:', sa)
       setSubAgents(sa)
     } catch (err) {
       console.error('Errore caricamento subagenti:', err)

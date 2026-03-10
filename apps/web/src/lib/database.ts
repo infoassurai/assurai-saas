@@ -1474,7 +1474,6 @@ export async function getSubAgents() {
     .select('*')
     .eq('role', 'subagent')
     .order('created_at', { ascending: false })
-  console.log('getSubAgents query result:', { data, error })
   if (error) throw error
   return data ?? []
 }
