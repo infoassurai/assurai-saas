@@ -37,7 +37,7 @@ function NewPolicyForm() {
     status: 'active',
     notes: '',
     campaign_code: '',
-    payment_frequency: 'annuale' as PaymentFrequency,
+    payment_frequency: '' as string,
   })
 
   useEffect(() => {
@@ -67,7 +67,7 @@ function NewPolicyForm() {
           status: 'active',
           notes: '',
           campaign_code: '',
-          payment_frequency: policy.payment_frequency || 'annuale',
+          payment_frequency: policy.payment_frequency || '',
         })
       }).catch(console.error)
     }
@@ -85,7 +85,7 @@ function NewPolicyForm() {
         premium_amount: parseFloat(form.premium_amount) || 0,
         company_id: form.company_id || undefined,
         campaign_code: form.campaign_code || undefined,
-        payment_frequency: form.payment_frequency,
+        payment_frequency: form.payment_frequency as PaymentFrequency,
       })
       router.push('/dashboard/policies')
     } catch (err: any) {
@@ -98,6 +98,12 @@ function NewPolicyForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    // Frazionamento obbligatorio
+    if (!form.payment_frequency) {
+      alert('Seleziona il tipo di frazionamento prima di salvare la polizza.')
+      return
+    }
 
     // Check duplicato: stessa polizza + stessa compagnia
     if (form.policy_number) {
@@ -214,19 +220,20 @@ function NewPolicyForm() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Frazionamento</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Frazionamento *</label>
               <select name="payment_frequency" value={form.payment_frequency} onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
+                className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none ${!form.payment_frequency ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}>
+                <option value="">— Seleziona —</option>
                 {PAYMENT_FREQUENCY_OPTIONS.map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
             </div>
-            {form.effective_date && form.expiry_date && (
+            {form.effective_date && form.expiry_date && form.payment_frequency && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Prossima Scadenza Rata</label>
                 <input type="date" readOnly
-                  value={calculateNextPaymentDate(form.effective_date, form.expiry_date, form.payment_frequency)}
+                  value={calculateNextPaymentDate(form.effective_date, form.expiry_date, form.payment_frequency as PaymentFrequency)}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 cursor-default" />
               </div>
             )}

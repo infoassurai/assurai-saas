@@ -33,7 +33,7 @@ export default function PolicyDetailPage() {
     company_id: '',
     status: 'active',
     notes: '',
-    payment_frequency: 'annuale' as PaymentFrequency,
+    payment_frequency: '' as string,
   })
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function PolicyDetailPage() {
         company_id: policy.company_id ?? '',
         status: policy.status,
         notes: policy.notes ?? '',
-        payment_frequency: policy.payment_frequency || 'annuale',
+        payment_frequency: policy.payment_frequency || '',
       })
       setLoading(false)
     }).catch((err) => {
@@ -71,6 +71,10 @@ export default function PolicyDetailPage() {
   }
 
   const handleSave = async () => {
+    if (!form.payment_frequency) {
+      alert('Seleziona il tipo di frazionamento prima di salvare la polizza.')
+      return
+    }
     setSaving(true)
     setError('')
     try {
@@ -176,16 +180,18 @@ export default function PolicyDetailPage() {
               <input name="expiry_date" type="date" value={form.expiry_date} onChange={handleChange} readOnly={!editing} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Frazionamento</label>
-              <select name="payment_frequency" value={form.payment_frequency} onChange={handleChange} disabled={!editing} className={inputClass}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Frazionamento *</label>
+              <select name="payment_frequency" value={form.payment_frequency} onChange={handleChange} disabled={!editing}
+                className={editing && !form.payment_frequency ? 'w-full px-3 py-2 border border-orange-300 bg-orange-50 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none' : inputClass}>
+                <option value="">— Seleziona —</option>
                 {PAYMENT_FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
-            {form.effective_date && form.expiry_date && (
+            {form.effective_date && form.expiry_date && form.payment_frequency && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Prossima Scadenza Rata</label>
                 <input type="date" readOnly
-                  value={calculateNextPaymentDate(form.effective_date, form.expiry_date, form.payment_frequency)}
+                  value={calculateNextPaymentDate(form.effective_date, form.expiry_date, form.payment_frequency as PaymentFrequency)}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 cursor-default" />
               </div>
             )}

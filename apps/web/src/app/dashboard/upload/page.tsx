@@ -135,33 +135,27 @@ export default function UploadPage() {
     const parsed = item.parsed
     if (!parsed) return
 
-    // Scadenza mancante
+    // Scadenza mancante → default decorrenza + 1 anno
     if (!parsed.expiryDate) {
       const effDate = parsed.effectiveDate
       if (!effDate) {
-        if (bulk) {
-          updateItem(item.id, { error: 'Data di decorrenza e scadenza mancanti.' })
-          return
-        }
         updateItem(item.id, { error: 'Data di decorrenza e scadenza mancanti. Compilare manualmente.' })
         return
       }
+      const expiryDate = addMonthsToDate(effDate, 12)
+      updateParsedField(item.id, 'expiryDate', expiryDate)
+      parsed.expiryDate = expiryDate
+    }
+
+    // Frazionamento obbligatorio
+    if (!parsed.paymentFrequency) {
       if (bulk) {
-        // In approvazione massiva: default 1 anno
-        const expiryDate = addMonthsToDate(effDate, 12)
-        updateParsedField(item.id, 'expiryDate', expiryDate)
-        parsed.expiryDate = expiryDate
-      } else {
-        const oneYear = addMonthsToDate(effDate, 12)
-        const choice = window.confirm(
-          `Data di scadenza non presente nel PDF.\n\nCalcolare 1 anno dalla decorrenza (${new Date(effDate).toLocaleDateString('it-IT')})?\n\nScadenza proposta: ${new Date(oneYear).toLocaleDateString('it-IT')}\n\nOK = 1 anno\nAnnulla = 6 mesi`
-        )
-        const expiryDate = choice
-          ? addMonthsToDate(effDate, 12)
-          : addMonthsToDate(effDate, 6)
-        updateParsedField(item.id, 'expiryDate', expiryDate)
-        parsed.expiryDate = expiryDate
+        updateItem(item.id, { error: 'Selezionare il frazionamento prima di approvare.' })
+        return
       }
+      alert('Seleziona il tipo di frazionamento prima di approvare la polizza.')
+      updateItem(item.id, { error: 'Frazionamento obbligatorio.' })
+      return
     }
 
     updateItem(item.id, { saving: true, error: undefined })
@@ -448,12 +442,13 @@ export default function UploadPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Frazionamento</label>
+                      <label className="block text-xs text-gray-500 mb-1">Frazionamento *</label>
                       <select
-                        value={currentItem.parsed.paymentFrequency ?? 'annuale'}
+                        value={currentItem.parsed.paymentFrequency ?? ''}
                         onChange={(e) => updateParsedField(currentItem.id, 'paymentFrequency', e.target.value)}
-                        className={inputClass}
+                        className={`${inputClass} ${!currentItem.parsed.paymentFrequency ? 'border-orange-300 bg-orange-50' : ''}`}
                       >
+                        <option value="">— Seleziona —</option>
                         {PAYMENT_FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
