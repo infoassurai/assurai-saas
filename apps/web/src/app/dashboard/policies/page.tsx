@@ -67,18 +67,18 @@ const sortFieldLabels: Record<SortField, string> = {
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir | null }) {
   if (!active) return (
-    <svg className="ml-1.5 text-gray-300 shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg className="ml-1.5 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
       <path d="M4 5.5L7 2.5L10 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M4 8.5L7 11.5L10 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
   return dir === 'desc' ? (
-    <svg className="ml-1.5 text-primary-600 shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg className="ml-1.5 text-primary-500 group-hover:text-primary-700 transition-colors shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
       <path d="M4 5L7 2L10 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
       <path d="M4 8L7 11L10 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ) : (
-    <svg className="ml-1.5 text-primary-600 shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg className="ml-1.5 text-primary-500 group-hover:text-primary-700 transition-colors shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
       <path d="M4 5L7 2L10 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M4 8L7 11L10 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
     </svg>
@@ -99,7 +99,7 @@ function SortableTh({ field, sortField, sortDir, onSort, align = 'left', childre
       <button
         onClick={() => onSort(field)}
         title={active ? (sortDir === 'desc' ? 'Ascendente' : 'Annulla ordinamento') : 'Ordina'}
-        className={`flex items-center gap-0 cursor-pointer select-none hover:text-gray-900 transition-colors ${align === 'right' ? 'ml-auto' : ''}`}
+        className={`group flex items-center gap-0 cursor-pointer select-none hover:text-gray-900 transition-colors ${align === 'right' ? 'ml-auto' : ''}`}
       >
         {children}
         <SortIcon active={active} dir={sortDir} />
