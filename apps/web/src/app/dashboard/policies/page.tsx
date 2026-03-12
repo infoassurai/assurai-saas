@@ -54,6 +54,14 @@ function getPaymentExpiryColor(dateStr: string | null): string {
   return 'text-gray-600'
 }
 
+type SortField = 'premium_amount' | 'expiry_date' | 'payment_expiry_date' | 'client_name' | 'policy_number'
+type SortDir = 'asc' | 'desc'
+
+function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField | null; sortDir: SortDir | null }) {
+  if (sortField !== field) return <span className="ml-1 text-gray-300">↕</span>
+  return <span className="ml-1 text-primary-600">{sortDir === 'desc' ? '↓' : '↑'}</span>
+}
+
 export default function PoliciesPage() {
   const router = useRouter()
   const { isAdmin } = useProfile()
@@ -63,6 +71,39 @@ export default function PoliciesPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [clientTypeFilter, setClientTypeFilter] = useState('')
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir | null>(null)
+
+  const handleSort = (field: SortField) => {
+    if (sortField !== field) {
+      setSortField(field)
+      setSortDir('desc')
+    } else if (sortDir === 'desc') {
+      setSortDir('asc')
+    } else {
+      setSortField(null)
+      setSortDir(null)
+    }
+  }
+
+  const sortedPolicies = [...policies].sort((a, b) => {
+    if (!sortField || !sortDir) return 0
+    let valA = a[sortField]
+    let valB = b[sortField]
+    if (sortField === 'premium_amount') {
+      valA = Number(valA) || 0
+      valB = Number(valB) || 0
+    } else if (sortField === 'expiry_date' || sortField === 'payment_expiry_date') {
+      valA = valA ? new Date(valA).getTime() : 0
+      valB = valB ? new Date(valB).getTime() : 0
+    } else {
+      valA = (valA ?? '').toString().toLowerCase()
+      valB = (valB ?? '').toString().toLowerCase()
+    }
+    if (valA < valB) return sortDir === 'asc' ? -1 : 1
+    if (valA > valB) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
 
   const handleDelete = async (id: string, policyNumber: string) => {
     if (!confirm(`Sei sicuro di voler eliminare la polizza "${policyNumber}"?`)) return
@@ -218,21 +259,41 @@ export default function PoliciesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">N. Polizza</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    <button onClick={() => handleSort('policy_number')} className="flex items-center hover:text-gray-900 transition">
+                      N. Polizza<SortIcon field="policy_number" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    <button onClick={() => handleSort('client_name')} className="flex items-center hover:text-gray-900 transition">
+                      Cliente<SortIcon field="client_name" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo Cliente</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Compagnia</th>
                   {isAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Agente</th>}
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Premio</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Scadenza</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Scad. Rata</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">
+                    <button onClick={() => handleSort('premium_amount')} className="flex items-center ml-auto hover:text-gray-900 transition">
+                      Premio<SortIcon field="premium_amount" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    <button onClick={() => handleSort('expiry_date')} className="flex items-center hover:text-gray-900 transition">
+                      Scadenza<SortIcon field="expiry_date" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">
+                    <button onClick={() => handleSort('payment_expiry_date')} className="flex items-center hover:text-gray-900 transition">
+                      Scad. Rata<SortIcon field="payment_expiry_date" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Stato</th>
                   <th className="text-center px-4 py-3 font-medium text-gray-600">Azioni</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {policies.map((p) => (
+                {sortedPolicies.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <Link href={`/dashboard/policies/${p.id}`} className="text-primary-600 hover:underline font-medium">
