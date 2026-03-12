@@ -57,9 +57,55 @@ function getPaymentExpiryColor(dateStr: string | null): string {
 type SortField = 'premium_amount' | 'expiry_date' | 'payment_expiry_date' | 'client_name' | 'policy_number'
 type SortDir = 'asc' | 'desc'
 
-function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField | null; sortDir: SortDir | null }) {
-  if (sortField !== field) return <span className="ml-1 text-gray-300">↕</span>
-  return <span className="ml-1 text-primary-600">{sortDir === 'desc' ? '↓' : '↑'}</span>
+const sortFieldLabels: Record<SortField, string> = {
+  premium_amount: 'Premio',
+  expiry_date: 'Scadenza',
+  payment_expiry_date: 'Scad. Rata',
+  client_name: 'Cliente',
+  policy_number: 'N. Polizza',
+}
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir | null }) {
+  if (!active) return (
+    <svg className="ml-1.5 text-gray-300 shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M4 5.5L7 2.5L10 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 8.5L7 11.5L10 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+  return dir === 'desc' ? (
+    <svg className="ml-1.5 text-primary-600 shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M4 5L7 2L10 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
+      <path d="M4 8L7 11L10 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ) : (
+    <svg className="ml-1.5 text-primary-600 shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M4 5L7 2L10 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 8L7 11L10 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3"/>
+    </svg>
+  )
+}
+
+function SortableTh({ field, sortField, sortDir, onSort, align = 'left', children }: {
+  field: SortField
+  sortField: SortField | null
+  sortDir: SortDir | null
+  onSort: (f: SortField) => void
+  align?: 'left' | 'right'
+  children: React.ReactNode
+}) {
+  const active = sortField === field
+  return (
+    <th className={`px-4 py-3 font-medium ${active ? 'bg-primary-50 text-primary-700' : 'text-gray-600'}`}>
+      <button
+        onClick={() => onSort(field)}
+        title={active ? (sortDir === 'desc' ? 'Ascendente' : 'Annulla ordinamento') : 'Ordina'}
+        className={`flex items-center gap-0 cursor-pointer select-none hover:text-gray-900 transition-colors ${align === 'right' ? 'ml-auto' : ''}`}
+      >
+        {children}
+        <SortIcon active={active} dir={sortDir} />
+      </button>
+    </th>
+  )
 }
 
 export default function PoliciesPage() {
@@ -243,6 +289,30 @@ export default function PoliciesPage() {
         </div>
       </div>
 
+      {/* Sort badge */}
+      {sortField && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1.5 bg-primary-50 border border-primary-200 text-primary-700 text-xs font-medium px-3 py-1.5 rounded-full">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+              {sortDir === 'desc'
+                ? <path d="M4 8L7 11L10 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                : <path d="M4 5L7 2L10 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              }
+            </svg>
+            Ordinato per: <strong>{sortFieldLabels[sortField]}</strong> — {sortDir === 'desc' ? 'Discendente' : 'Ascendente'}
+            <button
+              onClick={() => { setSortField(null); setSortDir(null) }}
+              className="ml-1 hover:text-primary-900 transition-colors"
+              title="Rimuovi ordinamento"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Tabella */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
@@ -259,35 +329,15 @@ export default function PoliciesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    <button onClick={() => handleSort('policy_number')} className="flex items-center hover:text-gray-900 transition">
-                      N. Polizza<SortIcon field="policy_number" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    <button onClick={() => handleSort('client_name')} className="flex items-center hover:text-gray-900 transition">
-                      Cliente<SortIcon field="client_name" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
+                  <SortableTh field="policy_number" sortField={sortField} sortDir={sortDir} onSort={handleSort}>N. Polizza</SortableTh>
+                  <SortableTh field="client_name" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Cliente</SortableTh>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo Cliente</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Compagnia</th>
                   {isAdmin && <th className="text-left px-4 py-3 font-medium text-gray-600">Agente</th>}
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">
-                    <button onClick={() => handleSort('premium_amount')} className="flex items-center ml-auto hover:text-gray-900 transition">
-                      Premio<SortIcon field="premium_amount" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    <button onClick={() => handleSort('expiry_date')} className="flex items-center hover:text-gray-900 transition">
-                      Scadenza<SortIcon field="expiry_date" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    <button onClick={() => handleSort('payment_expiry_date')} className="flex items-center hover:text-gray-900 transition">
-                      Scad. Rata<SortIcon field="payment_expiry_date" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
+                  <SortableTh field="premium_amount" sortField={sortField} sortDir={sortDir} onSort={handleSort} align="right">Premio</SortableTh>
+                  <SortableTh field="expiry_date" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Scadenza</SortableTh>
+                  <SortableTh field="payment_expiry_date" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Scad. Rata</SortableTh>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Stato</th>
                   <th className="text-center px-4 py-3 font-medium text-gray-600">Azioni</th>
                 </tr>
@@ -295,15 +345,14 @@ export default function PoliciesPage() {
               <tbody className="divide-y divide-gray-100">
                 {sortedPolicies.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
+                    <td className={`px-4 py-3 ${sortField === 'policy_number' ? 'bg-primary-50/40' : ''}`}>
                       <Link href={`/dashboard/policies/${p.id}`} className="text-primary-600 hover:underline font-medium">
                         {p.policy_number}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-900">{p.client_name}</td>
+                    <td className={`px-4 py-3 text-gray-900 ${sortField === 'client_name' ? 'bg-primary-50/40' : ''}`}>{p.client_name}</td>
                     <td className="px-4 py-3">
                       {(() => {
-                        // Derive client type: from DB column, or from fiscal code format
                         const ct = p.client_type
                           || (p.client_fiscal_code && /^\d{11}$/.test(p.client_fiscal_code) ? 'azienda' : 'persona')
                         return (
@@ -323,13 +372,13 @@ export default function PoliciesPage() {
                         )}
                       </td>
                     )}
-                    <td className="px-4 py-3 text-right text-gray-900 font-medium">
+                    <td className={`px-4 py-3 text-right text-gray-900 font-medium ${sortField === 'premium_amount' ? 'bg-primary-50/40' : ''}`}>
                       {Number(p.premium_amount).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className={`px-4 py-3 text-gray-600 ${sortField === 'expiry_date' ? 'bg-primary-50/40' : ''}`}>
                       {new Date(p.expiry_date).toLocaleDateString('it-IT')}
                     </td>
-                    <td className={`px-4 py-3 ${getPaymentExpiryColor(p.payment_expiry_date)}`}>
+                    <td className={`px-4 py-3 ${getPaymentExpiryColor(p.payment_expiry_date)} ${sortField === 'payment_expiry_date' ? 'bg-primary-50/40' : ''}`}>
                       {p.payment_expiry_date
                         ? new Date(p.payment_expiry_date).toLocaleDateString('it-IT')
                         : '—'}
