@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { getClient, updateClient, deleteClient, getClientDocuments, uploadClientDocument, deleteDocument, getDocumentSignedUrl } from '@/lib/database'
+import { getClient, updateClient, deleteClient, getClientDocuments, uploadClientDocument, deleteDocument, getDocumentSignedUrl, getProfile, getClientCommunications, uploadCommunicationAttachment, deleteCommunicationAttachment } from '@/lib/database'
 
 const statusLabels: Record<string, string> = {
   active: 'Attiva', expired: 'Scaduta', pending: 'In attesa', cancelled: 'Annullata',
@@ -42,6 +42,18 @@ export default function ClientDetailPage() {
   const [docsLoading, setDocsLoading] = useState(false)
   const [uploadLoading, setUploadLoading] = useState(false)
 
+  // Communications
+  type CommAttachment = { file_name: string; file_path: string }
+  const [showCommForm, setShowCommForm] = useState(false)
+  const [commChannel, setCommChannel] = useState<'email' | 'whatsapp' | 'both'>('email')
+  const [commSubject, setCommSubject] = useState('')
+  const [commBody, setCommBody] = useState('')
+  const [commAttachments, setCommAttachments] = useState<CommAttachment[]>([])
+  const [sendingComm, setSendingComm] = useState(false)
+  const [uploadingCommAtt, setUploadingCommAtt] = useState(false)
+  const [communications, setCommunications] = useState<any[]>([])
+  const [tenantId, setTenantId] = useState<string | null>(null)
+
   useEffect(() => {
     getClient(id).then((data) => {
       setClient(data)
@@ -68,6 +80,8 @@ export default function ClientDetailPage() {
       setLoading(false)
     })
     loadDocuments()
+    loadCommunications()
+    getProfile().then(p => { if (p?.tenant_id) setTenantId(p.tenant_id) }).catch(() => {})
   }, [id])
 
   const loadDocuments = async () => {
@@ -148,6 +162,74 @@ export default function ClientDetailPage() {
     }
   }
 
+  const loadCommunications = async () => {
+    try {
+      const comms = await getClientCommunications(id)
+      setCommunications(comms)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleCommAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !tenantId) return
+    setUploadingCommAtt(true)
+    try {
+      const att = await uploadCommunicationAttachment(file, id, tenantId)
+      setCommAttachments(prev => [...prev, att])
+    } catch (err: any) {
+      alert(`Errore upload: ${err.message}`)
+    } finally {
+      setUploadingCommAtt(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteCommAttachment = async (filePath: string) => {
+    try {
+      await deleteCommunicationAttachment(filePath)
+      setCommAttachments(prev => prev.filter(a => a.file_path !== filePath))
+    } catch (err: any) {
+      alert(`Errore: ${err.message}`)
+    }
+  }
+
+  const handleSendCommunication = async () => {
+    if (!commBody.trim()) return alert('Scrivi un messaggio')
+    if ((commChannel === 'email' || commChannel === 'both') && !commSubject.trim()) return alert('Inserisci un oggetto')
+    setSendingComm(true)
+    try {
+      const res = await fetch('/api/communications/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: id,
+          channel: commChannel,
+          subject: commSubject || undefined,
+          body: commBody,
+          attachments: commAttachments,
+        }),
+      })
+      const result = await res.json()
+      if (result.success || result.status === 'partial') {
+        setShowCommForm(false)
+        setCommBody('')
+        setCommSubject('')
+        setCommAttachments([])
+        setCommChannel('email')
+        await loadCommunications()
+        if (result.status === 'partial') alert(`Comunicazione inviata parzialmente: ${result.error}`)
+      } else {
+        alert(`Errore: ${result.error || 'Invio fallito'}`)
+      }
+    } catch (err: any) {
+      alert(`Errore: ${err.message}`)
+    } finally {
+      setSendingComm(false)
+    }
+  }
+
   if (loading) return <div className="text-gray-400 p-8">Caricamento...</div>
   if (!client) return <div className="text-red-500 p-8">Cliente non trovato</div>
 
@@ -165,11 +247,117 @@ export default function ClientDetailPage() {
     <div className="max-w-3xl">
       <div className="flex items-center gap-3 mb-6">
         <Link href="/dashboard/clients" className="text-gray-400 hover:text-gray-600">&larr;</Link>
-        <h2 className="text-2xl font-bold text-gray-900">{client.name}</h2>
+        <h2 className="text-2xl font-bold text-gray-900 flex-1">{client.name}</h2>
         {client.do_not_contact && (
           <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">Non contattare</span>
         )}
+        {!client.do_not_contact && (
+          <button
+            onClick={() => setShowCommForm(v => !v)}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition"
+          >
+            {showCommForm ? 'Annulla' : 'Invia comunicazione'}
+          </button>
+        )}
       </div>
+
+      {/* Pannello comunicazione */}
+      {showCommForm && (
+        <div className="bg-white rounded-xl border border-primary-200 p-6 space-y-4 mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">Nuova comunicazione</h3>
+
+          {/* Canale */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Canale</label>
+            <div className="flex gap-2">
+              {(['email', 'whatsapp', 'both'] as const).map(ch => (
+                <button
+                  key={ch}
+                  onClick={() => setCommChannel(ch)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${
+                    commChannel === ch
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {ch === 'email' ? 'Email' : ch === 'whatsapp' ? 'WhatsApp' : 'Entrambi'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Subject (email only) */}
+          {(commChannel === 'email' || commChannel === 'both') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Oggetto</label>
+              <input
+                type="text"
+                value={commSubject}
+                onChange={e => setCommSubject(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                placeholder="Oggetto email"
+              />
+            </div>
+          )}
+
+          {/* Body */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Messaggio</label>
+            <textarea
+              value={commBody}
+              onChange={e => setCommBody(e.target.value)}
+              rows={5}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y"
+              placeholder="Scrivi il messaggio..."
+            />
+          </div>
+
+          {/* Allegati (solo email) */}
+          {(commChannel === 'email' || commChannel === 'both') && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">Allegati</label>
+                <label className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+                  uploadingCommAtt
+                    ? 'opacity-50 cursor-not-allowed border-gray-200 text-gray-400'
+                    : 'border-primary-200 text-primary-700 bg-primary-50 hover:bg-primary-100'
+                }`}>
+                  {uploadingCommAtt ? 'Caricamento...' : '+ Allega file'}
+                  <input type="file" className="hidden" disabled={uploadingCommAtt} onChange={handleCommAttachmentUpload} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+                </label>
+              </div>
+              {commAttachments.length === 0 ? (
+                <p className="text-xs text-gray-400">Nessun allegato</p>
+              ) : (
+                <div className="space-y-1">
+                  {commAttachments.map(att => (
+                    <div key={att.file_path} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-100 bg-gray-50 text-sm">
+                      <span className="flex-1 truncate text-gray-800">{att.file_name}</span>
+                      <button onClick={() => handleDeleteCommAttachment(att.file_path)} className="text-xs text-red-500 hover:text-red-700 shrink-0">Rimuovi</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+            <button
+              onClick={handleSendCommunication}
+              disabled={sendingComm}
+              className="bg-primary-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition disabled:opacity-50"
+            >
+              {sendingComm ? 'Invio in corso...' : 'Invia'}
+            </button>
+            <button
+              onClick={() => { setShowCommForm(false); setCommBody(''); setCommSubject(''); setCommAttachments([]) }}
+              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -393,6 +581,47 @@ export default function ClientDetailPage() {
                 </button>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Storico comunicazioni */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Storico comunicazioni</h3>
+        {communications.length === 0 ? (
+          <p className="text-gray-400 text-sm">Nessuna comunicazione inviata a questo cliente.</p>
+        ) : (
+          <div className="space-y-3">
+            {communications.map((comm: any) => {
+              const statusColors: Record<string, string> = {
+                sent: 'bg-green-100 text-green-700',
+                failed: 'bg-red-100 text-red-700',
+                partial: 'bg-yellow-100 text-yellow-700',
+              }
+              const channelLabel: Record<string, string> = { email: 'Email', whatsapp: 'WhatsApp', both: 'Email + WhatsApp' }
+              return (
+                <div key={comm.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    {comm.subject && <p className="text-sm font-medium text-gray-900 truncate">{comm.subject}</p>}
+                    <p className="text-sm text-gray-600 line-clamp-2">{comm.body}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-400">{new Date(comm.sent_at).toLocaleString('it-IT')}</span>
+                      <span className="text-xs text-gray-400">&middot;</span>
+                      <span className="text-xs text-gray-500">{channelLabel[comm.channel] ?? comm.channel}</span>
+                      {comm.attachments?.length > 0 && (
+                        <>
+                          <span className="text-xs text-gray-400">&middot;</span>
+                          <span className="text-xs text-gray-500">{comm.attachments.length} allegat{comm.attachments.length === 1 ? 'o' : 'i'}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${statusColors[comm.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                    {comm.status === 'sent' ? 'Inviata' : comm.status === 'failed' ? 'Fallita' : 'Parziale'}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

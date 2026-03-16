@@ -172,13 +172,22 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
     return { success: true, sent: 0, failed: 0, errors: [] }
   }
 
-  // 4. Mark campaign as sending
+  // 4. Download campaign attachments once (before client loop)
+  const campaignAttachments: { filename: string; content: Buffer }[] = []
+  if ((campaign.channel === 'email' || campaign.channel === 'both') && Array.isArray(campaign.attachments) && campaign.attachments.length > 0) {
+    for (const att of campaign.attachments) {
+      const { data: attData } = await db.storage.from('documents').download(att.file_path)
+      if (attData) campaignAttachments.push({ filename: att.file_name, content: Buffer.from(await attData.arrayBuffer()) })
+    }
+  }
+
+  // 5. Mark campaign as sending
   await db.from('campaigns').update({
     status: 'sending',
     updated_at: new Date().toISOString(),
   }).eq('id', campaignId)
 
-  // 5. Check already-sent sends for this campaign (for resume)
+  // 6. Check already-sent sends for this campaign (for resume)
   const { data: existingSends } = await db
     .from('campaign_sends')
     .select('client_id, channel')
@@ -189,7 +198,7 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
     (existingSends ?? []).map(s => `${s.client_id}_${s.channel}`)
   )
 
-  // 6. Setup providers
+  // 7. Setup providers
   const resendKey = process.env.RESEND_API_KEY
   const defaultFromEmail = process.env.RESEND_FROM_EMAIL
   const resend = resendKey ? new Resend(resendKey) : null
@@ -236,7 +245,8 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
             to: client.email!,
             subject,
             html,
-          })
+            ...(campaignAttachments.length > 0 ? { attachments: campaignAttachments } : {}),
+          } as any)
 
           if (sendError) {
             await db.from('campaign_sends').insert({
@@ -328,7 +338,7 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
     }
   }
 
-  // 7. Update campaign stats
+  // 8. Update campaign stats
   // Get total counts from campaign_sends
   const { data: sendCounts } = await db
     .from('campaign_sends')

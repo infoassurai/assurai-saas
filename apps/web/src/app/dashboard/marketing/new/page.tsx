@@ -9,6 +9,9 @@ import {
   previewCampaignAudience,
   getInsuranceCompanies,
   getDistinctProfessioni,
+  getProfile,
+  uploadCampaignAttachment,
+  deleteCampaignAttachment,
 } from '@/lib/database'
 import { CAMPAIGN_PLACEHOLDERS } from '@/lib/notification-defaults'
 
@@ -61,6 +64,12 @@ function NewCampaignContent() {
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly' | 'quarterly'>('monthly')
 
+  // Attachments
+  type CampaignAttachment = { file_name: string; file_path: string }
+  const [attachments, setAttachments] = useState<CampaignAttachment[]>([])
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [tenantId, setTenantId] = useState<string | null>(null)
+
   const activeFilterCount = [
     policyTypes.length > 0, clientType, companyId, citta, cap, professioni.length > 0,
     etaMin, etaMax, premioMin, premioMax, statusFilter, scadenzaGiorni,
@@ -90,6 +99,7 @@ function NewCampaignContent() {
   useEffect(() => {
     getInsuranceCompanies().then(setCompanies).catch(() => {})
     getDistinctProfessioni().then(setProfessioniList).catch(() => {})
+    getProfile().then(p => { if (p?.tenant_id) setTenantId(p.tenant_id) }).catch(() => {})
     if (editId) {
       getCampaign(editId).then(c => {
         if (!c) return
@@ -99,6 +109,7 @@ function NewCampaignContent() {
         setBody(c.body)
         setScheduledAt(c.scheduled_at ?? '')
         if (c.code) setCampaignCode(c.code)
+        if (c.attachments) setAttachments(c.attachments)
         const f = c.filters ?? {}
         if (f.policy_type) setPolicyTypes(f.policy_type)
         if (f.client_type) setClientType(f.client_type)
@@ -177,7 +188,8 @@ function NewCampaignContent() {
           is_recurring: isRecurring,
           recurrence_type: isRecurring ? recurrenceType : null,
           next_run_at: nextRunAt,
-        })
+          attachments,
+        } as any)
       } else {
         const created = await createCampaign({
           name, channel, subject: subject || undefined, body, filters,
@@ -219,6 +231,35 @@ function NewCampaignContent() {
 
   const insertPlaceholder = (key: string) => {
     setBody(prev => prev + key)
+  }
+
+  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !editId || !tenantId) return
+    setUploadingAttachment(true)
+    try {
+      const att = await uploadCampaignAttachment(file, tenantId, editId)
+      const newAttachments = [...attachments, att]
+      setAttachments(newAttachments)
+      await updateCampaign(editId, { attachments: newAttachments } as any)
+    } catch (err: any) {
+      alert(`Errore upload: ${err.message}`)
+    } finally {
+      setUploadingAttachment(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (filePath: string) => {
+    if (!confirm('Rimuovere questo allegato?')) return
+    try {
+      await deleteCampaignAttachment(filePath)
+      const newAttachments = attachments.filter(a => a.file_path !== filePath)
+      setAttachments(newAttachments)
+      if (editId) await updateCampaign(editId, { attachments: newAttachments } as any)
+    } catch (err: any) {
+      alert(`Errore: ${err.message}`)
+    }
   }
 
   return (
@@ -574,6 +615,61 @@ function NewCampaignContent() {
           />
         </div>
       </div>
+
+      {/* Allegati */}
+      {(channel === 'email' || channel === 'both') && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-gray-900">Allegati email</h2>
+              <p className="text-xs text-gray-400 mt-0.5">I file allegati vengono inviati insieme all&apos;email a tutti i destinatari.</p>
+            </div>
+            {editId && (
+              <label className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+                uploadingAttachment
+                  ? 'opacity-50 cursor-not-allowed border-gray-200 text-gray-400'
+                  : 'border-primary-200 text-primary-700 bg-primary-50 hover:bg-primary-100'
+              }`}>
+                {uploadingAttachment ? 'Caricamento...' : '+ Aggiungi allegato'}
+                <input
+                  type="file"
+                  className="hidden"
+                  disabled={uploadingAttachment}
+                  onChange={handleAttachmentUpload}
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                />
+              </label>
+            )}
+          </div>
+
+          {!editId ? (
+            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <span className="text-amber-500 mt-0.5">&#9888;</span>
+              <p className="text-sm text-amber-700">Salva prima la campagna per poter aggiungere allegati.</p>
+            </div>
+          ) : attachments.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">
+              Nessun allegato. PDF, immagini e documenti Word sono supportati.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {attachments.map(att => (
+                <div key={att.file_path} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-100 bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{att.file_name}</p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteAttachment(att.file_path)}
+                    className="text-xs text-red-500 hover:text-red-700 shrink-0 font-medium"
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Programmazione */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">

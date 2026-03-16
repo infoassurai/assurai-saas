@@ -1444,6 +1444,43 @@ export async function deleteCampaign(id: string) {
   if (error) throw error
 }
 
+export async function uploadCampaignAttachment(file: File, tenantId: string, campaignId: string) {
+  const supabase = createClient()
+  const filePath = `${tenantId}/campaign-attachments/${campaignId}/${Date.now()}_${file.name}`
+  const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file)
+  if (uploadError) throw uploadError
+  return { file_name: file.name, file_path: filePath }
+}
+
+export async function deleteCampaignAttachment(filePath: string) {
+  const supabase = createClient()
+  await supabase.storage.from('documents').remove([filePath])
+}
+
+export async function getClientCommunications(clientId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('client_communications')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('sent_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function uploadCommunicationAttachment(file: File, clientId: string, tenantId: string) {
+  const supabase = createClient()
+  const filePath = `${tenantId}/communication-attachments/${clientId}/${Date.now()}_${file.name}`
+  const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file)
+  if (uploadError) throw uploadError
+  return { file_name: file.name, file_path: filePath }
+}
+
+export async function deleteCommunicationAttachment(filePath: string) {
+  const supabase = createClient()
+  await supabase.storage.from('documents').remove([filePath])
+}
+
 export async function getCampaignSends(campaignId: string) {
   const supabase = createClient()
   const { data, error } = await supabase
