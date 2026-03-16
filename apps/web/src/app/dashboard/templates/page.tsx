@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getProfile, getNotificationTemplates, upsertNotificationTemplate } from '@/lib/database'
+import { getProfile, getNotificationTemplates, upsertNotificationTemplate, uploadTemplateAttachment, deleteTemplateAttachment } from '@/lib/database'
 import {
   NOTIFICATION_STAGES,
   STAGE_LABELS,
@@ -11,10 +11,13 @@ import {
   type NotificationStage,
 } from '@/lib/notification-defaults'
 
+type Attachment = { file_name: string; file_path: string }
+
 type TemplateData = {
   email_subject: string
   email_body: string
   whatsapp_body: string
+  attachments: Attachment[]
 }
 
 export default function TemplatesPage() {
@@ -22,11 +25,14 @@ export default function TemplatesPage() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [activeStage, setActiveStage] = useState<NotificationStage>('30gg')
+  const [tenantId, setTenantId] = useState<string | null>(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+
   const [templates, setTemplates] = useState<Record<NotificationStage, TemplateData>>({
-    '30gg': { email_subject: '', email_body: '', whatsapp_body: '' },
-    '15gg': { email_subject: '', email_body: '', whatsapp_body: '' },
-    '7gg': { email_subject: '', email_body: '', whatsapp_body: '' },
-    'scaduta': { email_subject: '', email_body: '', whatsapp_body: '' },
+    '30gg':   { email_subject: '', email_body: '', whatsapp_body: '', attachments: [] },
+    '15gg':   { email_subject: '', email_body: '', whatsapp_body: '', attachments: [] },
+    '7gg':    { email_subject: '', email_body: '', whatsapp_body: '', attachments: [] },
+    'scaduta':{ email_subject: '', email_body: '', whatsapp_body: '', attachments: [] },
   })
 
   useEffect(() => {
@@ -35,15 +41,18 @@ export default function TemplatesPage() {
 
   const loadTemplates = async () => {
     try {
+      const profile = await getProfile()
+      if (profile?.tenant_id) setTenantId(profile.tenant_id)
+
       const dbTemplates = await getNotificationTemplates()
 
-      // Inizializza con i default, poi sovrascrivi con quelli salvati
       const merged: Record<NotificationStage, TemplateData> = {} as any
       for (const stage of NOTIFICATION_STAGES) {
         merged[stage] = {
           email_subject: DEFAULT_EMAIL_TEMPLATES[stage].subject,
           email_body: DEFAULT_EMAIL_TEMPLATES[stage].body,
           whatsapp_body: DEFAULT_WHATSAPP_TEMPLATES[stage],
+          attachments: [],
         }
       }
 
@@ -53,6 +62,7 @@ export default function TemplatesPage() {
         if (t.channel === 'email') {
           merged[stage].email_subject = t.subject ?? merged[stage].email_subject
           merged[stage].email_body = t.body
+          merged[stage].attachments = (t as any).attachments ?? []
         } else if (t.channel === 'whatsapp') {
           merged[stage].whatsapp_body = t.body
         }
@@ -82,6 +92,7 @@ export default function TemplatesPage() {
           channel: 'email',
           subject: t.email_subject,
           body: t.email_body,
+          attachments: t.attachments,
         }),
         upsertNotificationTemplate({
           tenant_id: profile.tenant_id,
@@ -119,6 +130,70 @@ export default function TemplatesPage() {
     setMsg('')
   }
 
+  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !tenantId) return
+    setUploadingAttachment(true)
+    setMsg('')
+    try {
+      const att = await uploadTemplateAttachment(file, tenantId, activeStage)
+      setTemplates(prev => ({
+        ...prev,
+        [activeStage]: {
+          ...prev[activeStage],
+          attachments: [...prev[activeStage].attachments, att],
+        },
+      }))
+      // Salva subito il template con il nuovo allegato
+      const t = { ...templates[activeStage], attachments: [...templates[activeStage].attachments, att] }
+      const profile = await getProfile()
+      if (profile?.tenant_id) {
+        await upsertNotificationTemplate({
+          tenant_id: profile.tenant_id,
+          stage: activeStage,
+          channel: 'email',
+          subject: t.email_subject,
+          body: t.email_body,
+          attachments: t.attachments,
+        })
+      }
+      setMsg('Allegato caricato')
+    } catch (err: any) {
+      setMsg(`Errore upload: ${err.message}`)
+    } finally {
+      setUploadingAttachment(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (filePath: string) => {
+    if (!confirm('Rimuovere questo allegato?')) return
+    try {
+      await deleteTemplateAttachment(filePath)
+      const newAttachments = templates[activeStage].attachments.filter(a => a.file_path !== filePath)
+      setTemplates(prev => ({
+        ...prev,
+        [activeStage]: { ...prev[activeStage], attachments: newAttachments },
+      }))
+      // Aggiorna template sul DB
+      const profile = await getProfile()
+      if (profile?.tenant_id) {
+        const t = templates[activeStage]
+        await upsertNotificationTemplate({
+          tenant_id: profile.tenant_id,
+          stage: activeStage,
+          channel: 'email',
+          subject: t.email_subject,
+          body: t.email_body,
+          attachments: newAttachments,
+        })
+      }
+      setMsg('Allegato rimosso')
+    } catch (err: any) {
+      setMsg(`Errore: ${err.message}`)
+    }
+  }
+
   if (loading) return <div className="text-gray-400 p-8">Caricamento...</div>
 
   const stageColors: Record<NotificationStage, string> = {
@@ -127,6 +202,8 @@ export default function TemplatesPage() {
     '7gg': 'bg-orange-500',
     'scaduta': 'bg-red-500',
   }
+
+  const currentAttachments = templates[activeStage].attachments ?? []
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -198,6 +275,53 @@ export default function TemplatesPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y font-mono"
           />
           <p className="text-xs text-gray-400 mt-1">Il testo viene inserito automaticamente nel template HTML con header e firma dell&apos;agenzia.</p>
+        </div>
+
+        {/* Allegati */}
+        <div className="border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700">Allegati email</h4>
+              <p className="text-xs text-gray-400 mt-0.5">I file allegati verranno inviati insieme ad ogni email di questo stage.</p>
+            </div>
+            <label className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+              uploadingAttachment
+                ? 'opacity-50 cursor-not-allowed border-gray-200 text-gray-400'
+                : 'border-primary-200 text-primary-700 bg-primary-50 hover:bg-primary-100'
+            }`}>
+              {uploadingAttachment ? 'Caricamento...' : '+ Aggiungi allegato'}
+              <input
+                type="file"
+                className="hidden"
+                disabled={uploadingAttachment}
+                onChange={handleAttachmentUpload}
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              />
+            </label>
+          </div>
+
+          {currentAttachments.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">
+              Nessun allegato. I file PDF, immagini e documenti Word sono supportati.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {currentAttachments.map((att) => (
+                <div key={att.file_path} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-100 bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{att.file_name}</p>
+                    <p className="text-xs text-gray-400 truncate">{att.file_path}</p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteAttachment(att.file_path)}
+                    className="text-xs text-red-500 hover:text-red-700 shrink-0 font-medium"
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

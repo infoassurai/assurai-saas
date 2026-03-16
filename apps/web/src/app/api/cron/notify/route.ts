@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       ? db.from('profiles').select('id, full_name').in('id', agentIds)
       : Promise.resolve({ data: [] }),
     tenantIds.length > 0
-      ? db.from('notification_templates').select('tenant_id, stage, channel, subject, body').in('tenant_id', tenantIds)
+      ? db.from('notification_templates').select('tenant_id, stage, channel, subject, body, attachments').in('tenant_id', tenantIds)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -113,12 +113,13 @@ export async function GET(request: NextRequest) {
   const agentMap = new Map((agentsRes.data ?? []).map(a => [a.id, a.full_name ?? 'Il tuo agente']))
 
   // Organizza template per tenant_id -> stage -> channel
-  const templateMap = new Map<string, Map<string, Map<string, { subject?: string; body: string }>>>()
+  type TemplateEntry = { subject?: string; body: string; attachments?: { file_name: string; file_path: string }[] }
+  const templateMap = new Map<string, Map<string, Map<string, TemplateEntry>>>()
   for (const t of templatesRes.data ?? []) {
     if (!templateMap.has(t.tenant_id)) templateMap.set(t.tenant_id, new Map())
     const tenantTemplates = templateMap.get(t.tenant_id)!
     if (!tenantTemplates.has(t.stage)) tenantTemplates.set(t.stage, new Map())
-    tenantTemplates.get(t.stage)!.set(t.channel, { subject: t.subject, body: t.body })
+    tenantTemplates.get(t.stage)!.set(t.channel, { subject: t.subject, body: t.body, attachments: t.attachments ?? [] })
   }
 
   const results = {
@@ -241,13 +242,23 @@ export async function GET(request: NextRequest) {
             customBody,
           })
 
+          // Scarica allegati template (se presenti)
+          const emailAttachments: { filename: string; content: Buffer }[] = []
+          for (const att of emailTemplate?.attachments ?? []) {
+            try {
+              const { data: blob } = await db.storage.from('documents').download(att.file_path)
+              if (blob) emailAttachments.push({ filename: att.file_name, content: Buffer.from(await blob.arrayBuffer()) })
+            } catch {}
+          }
+
           try {
             const { error: sendError } = await resend.emails.send({
               from: fromEmail,
               to: policy.client_email,
               subject: notif.type === 'payment' ? `Scadenza rata - ${policy.policy_number}` : subject,
               html,
-            })
+              ...(emailAttachments.length > 0 ? { attachments: emailAttachments } : {}),
+            } as any)
 
             if (sendError) {
               results.errors.push(`Email ${policy.client_email} [${notif.stage}/${notif.type}]: ${sendError.message}`)

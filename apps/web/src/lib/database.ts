@@ -873,12 +873,26 @@ export async function getNotificationTemplates() {
   return data ?? []
 }
 
+export async function uploadTemplateAttachment(file: File, tenantId: string, stage: string) {
+  const supabase = createClient()
+  const filePath = `${tenantId}/template-attachments/${stage}/${Date.now()}_${file.name}`
+  const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file)
+  if (uploadError) throw uploadError
+  return { file_name: file.name, file_path: filePath }
+}
+
+export async function deleteTemplateAttachment(filePath: string) {
+  const supabase = createClient()
+  await supabase.storage.from('documents').remove([filePath])
+}
+
 export async function upsertNotificationTemplate(template: {
   tenant_id: string
   stage: string
   channel: string
   subject: string | null
   body: string
+  attachments?: { file_name: string; file_path: string }[]
 }) {
   const supabase = createClient()
   const { data, error } = await supabase

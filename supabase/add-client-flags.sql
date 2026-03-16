@@ -18,6 +18,9 @@ ALTER TABLE campaigns
   ADD COLUMN IF NOT EXISTS recurrence_type TEXT CHECK (recurrence_type IN ('weekly','monthly','quarterly')),
   ADD COLUMN IF NOT EXISTS next_run_at TIMESTAMPTZ;
 
+-- 6. Allegati ai template email
+ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]';
+
 -- 5. Collegamento documenti ai clienti
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_documents_client ON documents(client_id);
