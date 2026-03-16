@@ -336,16 +336,49 @@ export default function ScadenzePage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5 shrink-0 items-end">
-                  {!alert.is_read && (
-                    <button onClick={() => handleMarkRead(alert.id)} className="text-xs text-primary-600 hover:underline whitespace-nowrap">
-                      Segna letto
-                    </button>
+                  {/* Azioni principali */}
+                  {alert.policy_id && (
+                    <div className="flex gap-1.5">
+                      {(() => {
+                        const method = alert.policies?.payment_method
+                        const isAutomatic = method === 'rid' || method === 'finanziamento'
+                        return isAutomatic ? (
+                          <Link
+                            href={`/dashboard/policies/${alert.policy_id}`}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap"
+                          >
+                            Verifica pag.
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/dashboard/policies/${alert.policy_id}`}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition whitespace-nowrap"
+                          >
+                            Incassa
+                          </Link>
+                        )
+                      })()}
+                      <Link
+                        href={`/dashboard/policies/new?renew=${alert.policy_id}`}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-primary-50 text-primary-700 border border-primary-200 hover:bg-primary-100 transition whitespace-nowrap"
+                      >
+                        Rinnova
+                      </Link>
+                    </div>
                   )}
-                  {!alert.is_dismissed && (
-                    <button onClick={() => handleDismiss(alert.id)} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">
-                      Archivia
-                    </button>
-                  )}
+                  {/* Azioni secondarie */}
+                  <div className="flex gap-2">
+                    {!alert.is_read && (
+                      <button onClick={() => handleMarkRead(alert.id)} className="text-xs text-primary-600 hover:underline whitespace-nowrap">
+                        Segna letto
+                      </button>
+                    )}
+                    {!alert.is_dismissed && (
+                      <button onClick={() => handleDismiss(alert.id)} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">
+                        Archivia
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )

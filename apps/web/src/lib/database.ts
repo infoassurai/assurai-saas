@@ -598,7 +598,7 @@ export async function getExpiryAlerts(showDismissed = false) {
   const supabase = createClient()
   let query = supabase
     .from('alerts')
-    .select('*, policies(policy_number, client_name)')
+    .select('*, policies(policy_number, client_name, payment_method)')
     .in('type', ['expiry', 'payment'])
     .order('due_date', { ascending: true })
 
