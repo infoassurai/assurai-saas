@@ -10,6 +10,9 @@ export default function NewClientPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const [doNotContact, setDoNotContact] = useState(false)
+  const [proprietaImmobiliare, setProprietaImmobiliare] = useState('no')
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -35,10 +38,12 @@ export default function NewClientPage() {
     setError('')
     setLoading(true)
     try {
-      const payload: Record<string, string | undefined> = {}
+      const payload: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(form)) {
         if (v) payload[k] = v
       }
+      payload.do_not_contact = doNotContact
+      payload.proprieta_immobiliare = proprietaImmobiliare
       await createClientRecord(payload as any)
       router.push('/dashboard/clients')
     } catch (err: any) {
@@ -105,7 +110,31 @@ export default function NewClientPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Professione</label>
               <input name="professione" value={form.professione} onChange={handleChange} className={inputClass} />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Proprieta Immobiliare</label>
+              <select value={proprietaImmobiliare} onChange={e => setProprietaImmobiliare(e.target.value)} className={inputClass}>
+                <option value="no">No</option>
+                <option value="si">Si (1 immobile)</option>
+                <option value="piu_immobili">Si (piu immobili)</option>
+              </select>
+            </div>
           </div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={doNotContact}
+              onChange={e => setDoNotContact(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Non contattare</span>
+            {doNotContact && (
+              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">Attivo</span>
+            )}
+          </label>
+          <p className="text-xs text-gray-400 mt-1 ml-7">Questo cliente non ricevera notifiche o campagne marketing</p>
         </div>
 
         <div className="border-t border-gray-100 pt-4">

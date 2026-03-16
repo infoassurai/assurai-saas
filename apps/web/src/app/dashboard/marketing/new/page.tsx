@@ -54,6 +54,13 @@ function NewCampaignContent() {
   const [campaignCode, setCampaignCode] = useState('')
   const [codeCopied, setCodeCopied] = useState(false)
 
+  // Recipient overrides
+  const [removedRecipients, setRemovedRecipients] = useState<Set<string>>(new Set())
+
+  // Recurring campaign
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurrenceType, setRecurrenceType] = useState<'weekly' | 'monthly' | 'quarterly'>('monthly')
+
   const activeFilterCount = [
     policyTypes.length > 0, clientType, companyId, citta, cap, professioni.length > 0,
     etaMin, etaMax, premioMin, premioMax, statusFilter, scadenzaGiorni,
@@ -73,6 +80,7 @@ function NewCampaignContent() {
     setStatusFilter('')
     setScadenzaGiorni('')
     setPreview(null)
+    setRemovedRecipients(new Set())
   }
 
   const toggleProfessione = (val: string) => {
@@ -104,6 +112,11 @@ function NewCampaignContent() {
         if (f.premio_max) setPremioMax(String(f.premio_max))
         if (f.status) setStatusFilter(f.status)
         if (f.scadenza_entro_giorni) setScadenzaGiorni(String(f.scadenza_entro_giorni))
+        if (c.is_recurring) setIsRecurring(c.is_recurring)
+        if (c.recurrence_type) setRecurrenceType(c.recurrence_type)
+        if (c.recipient_overrides?.removed) {
+          setRemovedRecipients(new Set(c.recipient_overrides.removed))
+        }
       }).catch(() => {})
     }
   }, [editId])
@@ -127,6 +140,7 @@ function NewCampaignContent() {
 
   const handlePreview = async () => {
     setPreviewLoading(true)
+    setRemovedRecipients(new Set())
     try {
       const result = await previewCampaignAudience(buildFilters(), channel)
       setPreview(result)
@@ -143,17 +157,36 @@ function NewCampaignContent() {
       const filters = buildFilters()
       let campaignId = editId
 
+      const recipientOverrides = {
+        added: [],
+        removed: Array.from(removedRecipients),
+      }
+
+      const nextRunAt = isRecurring && scheduledAt
+        ? new Date(scheduledAt).toISOString()
+        : isRecurring
+          ? new Date().toISOString()
+          : null
+
       if (editId) {
         await updateCampaign(editId, {
           name, channel, subject: subject || null, body, filters,
           scheduled_at: scheduledAt || null,
           status: scheduledAt ? 'scheduled' : 'draft',
+          recipient_overrides: recipientOverrides,
+          is_recurring: isRecurring,
+          recurrence_type: isRecurring ? recurrenceType : null,
+          next_run_at: nextRunAt,
         })
       } else {
         const created = await createCampaign({
           name, channel, subject: subject || undefined, body, filters,
           scheduled_at: scheduledAt || undefined,
-        })
+          recipient_overrides: recipientOverrides,
+          is_recurring: isRecurring,
+          recurrence_type: isRecurring ? recurrenceType : undefined,
+          next_run_at: nextRunAt,
+        } as any)
         campaignId = created.id
       }
 
@@ -449,27 +482,52 @@ function NewCampaignContent() {
 
         {preview && preview.sample.length > 0 && (
           <div className="rounded-lg border border-gray-100 overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Anteprima destinatari</p>
+              {removedRecipients.size > 0 && (
+                <span className="text-xs text-orange-600 font-medium">{removedRecipients.size} esclusi manualmente</span>
+              )}
+            </div>
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase">
+                <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase border-t border-gray-100">
+                  <th className="px-3 py-2 w-8"></th>
                   <th className="px-3 py-2">Nome</th>
                   <th className="px-3 py-2">Email</th>
                   <th className="px-3 py-2">Citta</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {preview.sample.map((c: any) => (
-                  <tr key={c.id}>
-                    <td className="px-3 py-1.5 text-sm text-gray-900">{c.name}</td>
-                    <td className="px-3 py-1.5 text-sm text-gray-500">{c.email || '-'}</td>
-                    <td className="px-3 py-1.5 text-sm text-gray-500">{c.citta || '-'}</td>
-                  </tr>
-                ))}
+                {preview.sample.map((c: any) => {
+                  const isRemoved = removedRecipients.has(c.id)
+                  return (
+                    <tr key={c.id} className={isRemoved ? 'opacity-40' : ''}>
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={!isRemoved}
+                          onChange={() => {
+                            setRemovedRecipients(prev => {
+                              const next = new Set(prev)
+                              if (next.has(c.id)) next.delete(c.id)
+                              else next.add(c.id)
+                              return next
+                            })
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-sm text-gray-900">{c.name}</td>
+                      <td className="px-3 py-1.5 text-sm text-gray-500">{c.email || '-'}</td>
+                      <td className="px-3 py-1.5 text-sm text-gray-500">{c.citta || '-'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {preview.count > preview.sample.length && (
               <div className="px-3 py-1.5 bg-gray-50 text-xs text-gray-400 text-center">
-                ...e altri {preview.count - preview.sample.length}
+                ...e altri {preview.count - preview.sample.length} (visibili solo i primi 10; le esclusioni si applicano all&apos;intera lista al momento dell&apos;invio)
               </div>
             )}
           </div>
@@ -529,6 +587,41 @@ function NewCampaignContent() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
           />
           <p className="text-xs text-gray-400 mt-1">Lascia vuoto per salvare come bozza o inviare subito</p>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isRecurring}
+              onChange={e => setIsRecurring(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Campagna ricorrente</span>
+          </label>
+          <p className="text-xs text-gray-400 mt-1 ml-7">La campagna si ripete automaticamente alla frequenza selezionata</p>
+
+          {isRecurring && (
+            <div className="mt-3 ml-7">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Frequenza</label>
+              <div className="flex gap-2">
+                {(['weekly', 'monthly', 'quarterly'] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setRecurrenceType(type)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${
+                      recurrenceType === type
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {type === 'weekly' ? 'Settimanale' : type === 'monthly' ? 'Mensile' : 'Trimestrale'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

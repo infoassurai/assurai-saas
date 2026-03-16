@@ -956,6 +956,62 @@ export async function cloneDocumentForPolicy(originalDocId: string, policyId: st
   return data
 }
 
+export async function getClientDocuments(clientId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function uploadClientDocument(file: File, clientId: string) {
+  const supabase = createClient()
+  const profile = await getProfile()
+  if (!profile) throw new Error('Profilo non trovato')
+
+  const filePath = `${profile.tenant_id}/${Date.now()}_${file.name}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('documents')
+    .upload(filePath, file)
+  if (uploadError) throw uploadError
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      tenant_id: profile.tenant_id,
+      client_id: clientId,
+      file_name: file.name,
+      file_path: filePath,
+      file_size: file.size,
+      mime_type: file.type,
+      uploaded_by: profile.id,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteDocument(id: string) {
+  const supabase = createClient()
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('file_path')
+    .eq('id', id)
+    .single()
+
+  if (doc?.file_path) {
+    await supabase.storage.from('documents').remove([doc.file_path])
+  }
+
+  const { error } = await supabase.from('documents').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function uploadDocument(file: File, policyId?: string) {
   const supabase = createClient()
   const profile = await getProfile()
@@ -1219,6 +1275,25 @@ export async function deleteClient(id: string) {
     .delete()
     .eq('id', id)
   if (error) throw error
+}
+
+// ============================================
+// POLICIES BY EXPIRY MONTH
+// ============================================
+export async function getPoliciesByExpiryMonth(year: number, month: number) {
+  const supabase = createClient()
+  const firstDay = new Date(year, month - 1, 1).toISOString().split('T')[0]
+  const lastDay = new Date(year, month, 0).toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('policies')
+    .select('id, policy_number, client_name, client_id, policy_type, company_id, expiry_date, premium_amount, status, insurance_companies(name)')
+    .gte('expiry_date', firstDay)
+    .lte('expiry_date', lastDay)
+    .order('expiry_date', { ascending: true })
+
+  if (error) throw error
+  return data ?? []
 }
 
 export async function getPortfolioByCompany() {

@@ -101,9 +101,16 @@ export default function ClientsPage() {
               {clients.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <Link href={`/dashboard/clients/${c.id}`} className="text-primary-600 hover:underline font-medium">
-                      {c.name}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/dashboard/clients/${c.id}`} className="text-primary-600 hover:underline font-medium">
+                        {c.name}
+                      </Link>
+                      {c.do_not_contact && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700">
+                          Non contattare
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600 capitalize">{c.client_type || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{c.email || '—'}</td>

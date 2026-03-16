@@ -56,6 +56,7 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
     .from('clients')
     .select('id, name, email, phone, citta')
     .eq('tenant_id', campaign.tenant_id)
+    .eq('do_not_contact', false)
 
   if (filters.client_type) query = query.eq('client_type', filters.client_type)
   if (filters.citta) query = query.ilike('citta', `%${filters.citta}%`)
@@ -128,13 +129,38 @@ export async function executeCampaignSend(campaignId: string): Promise<CampaignR
     clientIds = clientIds.filter(id => policyClientIds.has(id))
   }
 
-  // Filter by channel availability
-  const clients = allClients.filter(c => {
-    if (!clientIds.includes(c.id)) return false
-    if (campaign.channel === 'email') return !!c.email
-    if (campaign.channel === 'whatsapp') return !!c.phone
-    return !!c.email || !!c.phone // 'both'
-  })
+  // Apply recipient overrides
+  const overrides = campaign.recipient_overrides ?? { added: [], removed: [] }
+  const removedSet = new Set<string>(overrides.removed ?? [])
+
+  // Add clients from 'added' overrides (fetch them separately)
+  let addedClients: typeof allClients = []
+  if (overrides.added && overrides.added.length > 0) {
+    const { data: extraClients } = await db
+      .from('clients')
+      .select('id, name, email, phone, citta')
+      .in('id', overrides.added)
+      .eq('do_not_contact', false)
+    addedClients = extraClients ?? []
+  }
+
+  // Filter by channel availability + apply overrides
+  const clients = [
+    ...allClients.filter(c => {
+      if (!clientIds.includes(c.id)) return false
+      if (removedSet.has(c.id)) return false
+      if (campaign.channel === 'email') return !!c.email
+      if (campaign.channel === 'whatsapp') return !!c.phone
+      return !!c.email || !!c.phone // 'both'
+    }),
+    ...addedClients.filter(c => {
+      if (clientIds.includes(c.id)) return false // already in main audience
+      if (removedSet.has(c.id)) return false
+      if (campaign.channel === 'email') return !!c.email
+      if (campaign.channel === 'whatsapp') return !!c.phone
+      return !!c.email || !!c.phone
+    }),
+  ]
 
   if (clients.length === 0) {
     await db.from('campaigns').update({

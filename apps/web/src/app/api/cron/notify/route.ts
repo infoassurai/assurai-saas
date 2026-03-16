@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
   const toStr = to.toISOString().split('T')[0]
   const { data: policies, error: policiesError } = await db
     .from('policies')
-    .select('id, policy_number, policy_type, client_name, client_email, client_phone, effective_date, expiry_date, tenant_id, agent_id, payment_frequency, payment_expiry_date')
+    .select('id, policy_number, policy_type, client_name, client_email, client_phone, client_id, effective_date, expiry_date, tenant_id, agent_id, payment_frequency, payment_expiry_date')
     .eq('status', 'active')
     .or(`and(expiry_date.gte.${fromStr},expiry_date.lte.${toStr}),and(payment_expiry_date.gte.${fromStr},payment_expiry_date.lte.${toStr})`)
 
@@ -52,8 +52,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Errore query polizze', details: policiesError.message }, { status: 500 })
   }
 
-  // Filtra: serve almeno email o telefono
-  const contactablePolicies = (policies ?? []).filter(p => p.client_email || p.client_phone)
+  // Fetch client IDs with do_not_contact = true
+  const allClientIds = [...new Set((policies ?? []).map(p => (p as any).client_id).filter(Boolean))]
+  let doNotContactIds = new Set<string>()
+  if (allClientIds.length > 0) {
+    const { data: dnc } = await db
+      .from('clients')
+      .select('id')
+      .in('id', allClientIds)
+      .eq('do_not_contact', true)
+    doNotContactIds = new Set((dnc ?? []).map(c => c.id))
+  }
+
+  // Filtra: serve almeno email o telefono, e cliente non in "non contattare"
+  const contactablePolicies = (policies ?? []).filter(p => {
+    if (!p.client_email && !p.client_phone) return false
+    if ((p as any).client_id && doNotContactIds.has((p as any).client_id)) return false
+    return true
+  })
 
   if (contactablePolicies.length === 0) {
     return NextResponse.json({ success: true, email: { sent: 0, skipped: 0 }, whatsapp: { sent: 0, skipped: 0 }, errors: [] })
@@ -347,6 +363,33 @@ export async function GET(request: NextRequest) {
         campaignResults.push(`Campagna ${c.id}: ripresa invio`)
       } catch (err: any) {
         campaignResults.push(`Campagna ${c.id}: errore ripresa - ${err.message}`)
+      }
+    }
+
+    // Campagne ricorrenti in scadenza
+    const { data: recurringDue } = await db
+      .from('campaigns')
+      .select('id, recurrence_type, next_run_at')
+      .eq('is_recurring', true)
+      .eq('status', 'sent')
+      .lte('next_run_at', new Date().toISOString())
+      .not('next_run_at', 'is', null)
+
+    for (const c of recurringDue ?? []) {
+      try {
+        // Reset stato per permettere un nuovo invio
+        await db.from('campaigns').update({ status: 'draft', sent_at: null }).eq('id', c.id)
+        await db.from('campaign_sends').delete().eq('campaign_id', c.id)
+        await executeCampaignSend(c.id)
+        // Calcola next_run_at
+        const next = new Date(c.next_run_at)
+        if (c.recurrence_type === 'weekly') next.setDate(next.getDate() + 7)
+        else if (c.recurrence_type === 'monthly') next.setMonth(next.getMonth() + 1)
+        else if (c.recurrence_type === 'quarterly') next.setMonth(next.getMonth() + 3)
+        await db.from('campaigns').update({ next_run_at: next.toISOString() }).eq('id', c.id)
+        campaignResults.push(`Campagna ricorrente ${c.id}: inviata`)
+      } catch (err: any) {
+        campaignResults.push(`Campagna ricorrente ${c.id}: errore - ${err.message}`)
       }
     }
   } catch { }

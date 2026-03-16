@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getExpiryAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllExpiryAlertsRead, getNotificationStatus } from '@/lib/database'
+import { getExpiryAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllExpiryAlertsRead, getNotificationStatus, getPoliciesByExpiryMonth } from '@/lib/database'
 
 const TABS = [
   { key: 'all', label: 'Tutte', color: 'bg-gray-100 text-gray-700' },
@@ -11,7 +11,12 @@ const TABS = [
   { key: '7gg', label: '< 7 giorni', color: 'bg-orange-100 text-orange-700' },
   { key: '15gg', label: '< 15 giorni', color: 'bg-yellow-100 text-yellow-700' },
   { key: '30gg', label: '< 30 giorni', color: 'bg-blue-100 text-blue-700' },
+  { key: 'mese', label: 'Per Mese', color: 'bg-purple-100 text-purple-700' },
 ]
+
+const typeLabels: Record<string, string> = {
+  auto: 'Auto', home: 'Casa', life: 'Vita', health: 'Salute', other: 'Altro',
+}
 
 function getDaysLeft(date: string) {
   return Math.ceil((new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
@@ -41,6 +46,13 @@ export default function ScadenzePage() {
   const [sentEmail, setSentEmail] = useState<Set<string>>(new Set())
   const [sentWhatsapp, setSentWhatsapp] = useState<Set<string>>(new Set())
 
+  // Per Mese state
+  const now = new Date()
+  const [meseAnno, setMeseAnno] = useState(now.getFullYear())
+  const [meseMese, setMeseMese] = useState(now.getMonth() + 1)
+  const [mesePolicies, setMesePolicies] = useState<any[]>([])
+  const [meseLoading, setMeseLoading] = useState(false)
+
   const loadAlerts = async () => {
     setLoading(true)
     try {
@@ -60,7 +72,20 @@ export default function ScadenzePage() {
     }
   }
 
+  const loadMese = async () => {
+    setMeseLoading(true)
+    try {
+      const data = await getPoliciesByExpiryMonth(meseAnno, meseMese)
+      setMesePolicies(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setMeseLoading(false)
+    }
+  }
+
   useEffect(() => { loadAlerts() }, [showDismissed])
+  useEffect(() => { if (activeTab === 'mese') loadMese() }, [activeTab, meseAnno, meseMese])
 
   const handleMarkAllRead = async () => {
     await markAllExpiryAlertsRead()
@@ -76,6 +101,8 @@ export default function ScadenzePage() {
     await dismissAlert(id)
     await loadAlerts()
   }
+
+  const MONTH_NAMES = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
   // Categorizza gli alert
   const alertsWithDays = alerts.map(a => ({
@@ -96,6 +123,122 @@ export default function ScadenzePage() {
     : alertsWithDays.filter(a => a._category === activeTab)
 
   const unreadCount = alerts.filter(a => !a.is_read).length
+
+  if (activeTab === 'mese') {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Scadenze Polizze</h2>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-2 mb-5">
+          {TABS.map(tab => {
+            const count = tab.key !== 'mese' ? (counts[tab.key] ?? 0) : mesePolicies.length
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                  activeTab === tab.key
+                    ? `${tab.color} ring-2 ring-offset-1 ring-gray-300`
+                    : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {tab.label}
+                {count > 0 && tab.key !== 'mese' && (
+                  <span className="min-w-[20px] h-5 flex items-center justify-center rounded-full text-xs font-bold px-1.5 bg-gray-400 text-white">
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Month picker */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex items-center gap-4">
+          <button
+            onClick={() => {
+              if (meseMese === 1) { setMeseMese(12); setMeseAnno(meseAnno - 1) }
+              else setMeseMese(meseMese - 1)
+            }}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600"
+          >
+            ‹
+          </button>
+          <span className="text-base font-semibold text-gray-900 min-w-[160px] text-center">
+            {MONTH_NAMES[meseMese - 1]} {meseAnno}
+          </span>
+          <button
+            onClick={() => {
+              if (meseMese === 12) { setMeseMese(1); setMeseAnno(meseAnno + 1) }
+              else setMeseMese(meseMese + 1)
+            }}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600"
+          >
+            ›
+          </button>
+          <span className="text-sm text-gray-400">
+            {mesePolicies.length} polizze in scadenza
+          </span>
+        </div>
+
+        {meseLoading ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">Caricamento...</div>
+        ) : mesePolicies.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+            Nessuna polizza in scadenza in questo mese.
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Compagnia</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Scadenza</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Premio</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {mesePolicies.map((p: any) => {
+                  const daysLeft = getDaysLeft(p.expiry_date)
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{p.client_name}</td>
+                      <td className="px-4 py-3 text-gray-600">{typeLabels[p.policy_type] ?? p.policy_type}</td>
+                      <td className="px-4 py-3 text-gray-600">{(p as any).insurance_companies?.name ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm font-medium ${daysLeft < 0 ? 'text-red-600' : daysLeft <= 7 ? 'text-orange-600' : 'text-gray-700'}`}>
+                          {new Date(p.expiry_date).toLocaleDateString('it-IT')}
+                          {daysLeft < 0 && ' (scaduta)'}
+                          {daysLeft >= 0 && ` (${daysLeft}gg)`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-900">
+                        {(p.premium_amount || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/dashboard/policies/${p.id}`}
+                          className="text-xs text-primary-600 hover:underline font-medium"
+                        >
+                          Rinnova →
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -144,7 +287,7 @@ export default function ScadenzePage() {
               }`}
             >
               {tab.label}
-              {count > 0 && (
+              {count > 0 && tab.key !== 'mese' && (
                 <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full text-xs font-bold px-1.5 ${
                   activeTab === tab.key
                     ? 'bg-white/60 text-inherit'

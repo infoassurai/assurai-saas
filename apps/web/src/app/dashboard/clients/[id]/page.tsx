@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { getClient, updateClient, deleteClient } from '@/lib/database'
+import { getClient, updateClient, deleteClient, getClientDocuments, uploadClientDocument, deleteDocument, getDocumentSignedUrl } from '@/lib/database'
 
 const statusLabels: Record<string, string> = {
   active: 'Attiva', expired: 'Scaduta', pending: 'In attesa', cancelled: 'Annullata',
@@ -34,6 +34,13 @@ export default function ClientDetailPage() {
     data_nascita: '', sesso: '', professione: '', citta: '', cap: '',
     indirizzo: '', provincia: '', notes: '',
   })
+  const [doNotContact, setDoNotContact] = useState(false)
+  const [proprietaImmobiliare, setProprietaImmobiliare] = useState('no')
+
+  // Documents
+  const [documents, setDocuments] = useState<any[]>([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [uploadLoading, setUploadLoading] = useState(false)
 
   useEffect(() => {
     getClient(id).then((data) => {
@@ -53,12 +60,27 @@ export default function ClientDetailPage() {
         provincia: data.provincia || '',
         notes: data.notes || '',
       })
+      setDoNotContact(data.do_not_contact ?? false)
+      setProprietaImmobiliare(data.proprieta_immobiliare ?? 'no')
       setLoading(false)
     }).catch((err) => {
       setError(err.message)
       setLoading(false)
     })
+    loadDocuments()
   }, [id])
+
+  const loadDocuments = async () => {
+    setDocsLoading(true)
+    try {
+      const docs = await getClientDocuments(id)
+      setDocuments(docs)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDocsLoading(false)
+    }
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -68,7 +90,7 @@ export default function ClientDetailPage() {
     setSaving(true)
     setError('')
     try {
-      await updateClient(id, form)
+      await updateClient(id, { ...form, do_not_contact: doNotContact, proprieta_immobiliare: proprietaImmobiliare })
       setEditing(false)
       const updated = await getClient(id)
       setClient(updated)
@@ -86,6 +108,43 @@ export default function ClientDetailPage() {
       router.push('/dashboard/clients')
     } catch (err: any) {
       setError(err.message)
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadLoading(true)
+    try {
+      await uploadClientDocument(file, id)
+      await loadDocuments()
+    } catch (err: any) {
+      alert(`Errore upload: ${err.message}`)
+    } finally {
+      setUploadLoading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDownload = async (filePath: string, fileName: string) => {
+    try {
+      const url = await getDocumentSignedUrl(filePath)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      a.click()
+    } catch (err: any) {
+      alert(`Errore download: ${err.message}`)
+    }
+  }
+
+  const handleDeleteDoc = async (docId: string) => {
+    if (!confirm('Eliminare questo documento?')) return
+    try {
+      await deleteDocument(docId)
+      await loadDocuments()
+    } catch (err: any) {
+      alert(`Errore: ${err.message}`)
     }
   }
 
@@ -107,6 +166,9 @@ export default function ClientDetailPage() {
       <div className="flex items-center gap-3 mb-6">
         <Link href="/dashboard/clients" className="text-gray-400 hover:text-gray-600">&larr;</Link>
         <h2 className="text-2xl font-bold text-gray-900">{client.name}</h2>
+        {client.do_not_contact && (
+          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">Non contattare</span>
+        )}
       </div>
 
       {/* Stats */}
@@ -171,6 +233,14 @@ export default function ClientDetailPage() {
             <input name="professione" value={form.professione} onChange={handleChange} readOnly={!editing} className={inputClass} />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Proprieta Immobiliare</label>
+            <select name="proprieta_immobiliare" value={proprietaImmobiliare} onChange={e => setProprietaImmobiliare(e.target.value)} disabled={!editing} className={inputClass}>
+              <option value="no">No</option>
+              <option value="si">Si (1 immobile)</option>
+              <option value="piu_immobili">Si (piu immobili)</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Citta</label>
             <input name="citta" value={form.citta} onChange={handleChange} readOnly={!editing} className={inputClass} />
           </div>
@@ -191,6 +261,24 @@ export default function ClientDetailPage() {
             <textarea name="notes" rows={3} value={form.notes} onChange={handleChange} readOnly={!editing}
               className={`${inputClass} resize-none`} />
           </div>
+        </div>
+
+        {/* Non contattare toggle */}
+        <div className="border-t border-gray-100 pt-4">
+          <label className={`flex items-center gap-3 ${editing ? 'cursor-pointer' : 'cursor-default'}`}>
+            <input
+              type="checkbox"
+              checked={doNotContact}
+              onChange={e => editing && setDoNotContact(e.target.checked)}
+              disabled={!editing}
+              className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Non contattare</span>
+            {doNotContact && (
+              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">Attivo</span>
+            )}
+          </label>
+          <p className="text-xs text-gray-400 mt-1 ml-7">Questo cliente non ricevera notifiche o campagne marketing</p>
         </div>
 
         <div className="flex gap-3 pt-2 border-t border-gray-100">
@@ -221,7 +309,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Polizze collegate */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Polizze Collegate</h3>
         {policies.length === 0 ? (
           <p className="text-gray-400 text-sm">Nessuna polizza collegata a questo cliente.</p>
@@ -257,6 +345,54 @@ export default function ClientDetailPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* Documenti cliente */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Documenti</h3>
+          <label className={`cursor-pointer px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition ${uploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            {uploadLoading ? 'Caricamento...' : '+ Carica documento'}
+            <input
+              type="file"
+              className="hidden"
+              disabled={uploadLoading}
+              onChange={handleFileUpload}
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            />
+          </label>
+        </div>
+
+        {docsLoading ? (
+          <p className="text-gray-400 text-sm">Caricamento documenti...</p>
+        ) : documents.length === 0 ? (
+          <p className="text-gray-400 text-sm">Nessun documento caricato per questo cliente.</p>
+        ) : (
+          <div className="space-y-2">
+            {documents.map((doc: any) => (
+              <div key={doc.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{doc.file_name}</p>
+                  <p className="text-xs text-gray-400">
+                    {new Date(doc.created_at).toLocaleDateString('it-IT')} &middot; {(doc.file_size / 1024).toFixed(0)} KB
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDownload(doc.file_path, doc.file_name)}
+                  className="text-xs text-primary-600 hover:underline font-medium shrink-0"
+                >
+                  Scarica
+                </button>
+                <button
+                  onClick={() => handleDeleteDoc(doc.id)}
+                  className="text-xs text-red-500 hover:text-red-700 shrink-0"
+                >
+                  Elimina
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
