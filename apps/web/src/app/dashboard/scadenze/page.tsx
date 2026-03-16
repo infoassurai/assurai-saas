@@ -4,38 +4,53 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getExpiryAlerts, markAlertRead, dismissAlert, generateExpiryAlerts, markAllExpiryAlertsRead, getNotificationStatus, getPoliciesByExpiryMonth } from '@/lib/database'
 
-const TABS = [
-  { key: 'all', label: 'Tutte', color: 'bg-gray-100 text-gray-700' },
-  { key: 'scadute', label: 'Scadute', color: 'bg-red-100 text-red-700' },
-  { key: '1gg', label: '< 1 giorno', color: 'bg-red-50 text-red-600' },
-  { key: '7gg', label: '< 7 giorni', color: 'bg-orange-100 text-orange-700' },
-  { key: '15gg', label: '< 15 giorni', color: 'bg-yellow-100 text-yellow-700' },
-  { key: '30gg', label: '< 30 giorni', color: 'bg-blue-100 text-blue-700' },
-  { key: 'mese', label: 'Per Mese', color: 'bg-purple-100 text-purple-700' },
+// Categorie urgenza (solo alert)
+const URGENCY_TABS = [
+  { key: 'all',         label: 'Tutte',              dot: 'bg-gray-400',    badge: 'bg-gray-100 text-gray-700',    activeBg: 'bg-gray-100 text-gray-700' },
+  { key: 'scad_oltre',  label: 'Scadute > 15 gg',    dot: 'bg-red-800',     badge: 'bg-red-900 text-white',        activeBg: 'bg-red-900 text-white' },
+  { key: 'scad_10',     label: 'Scadute 10–15 gg',   dot: 'bg-red-600',     badge: 'bg-red-700 text-white',        activeBg: 'bg-red-700 text-white' },
+  { key: 'scad_recenti',label: 'Scadute < 10 gg',    dot: 'bg-red-500',     badge: 'bg-red-100 text-red-700',      activeBg: 'bg-red-100 text-red-700' },
+  { key: '1gg',         label: '< 1 giorno',          dot: 'bg-orange-500',  badge: 'bg-orange-100 text-orange-700',activeBg: 'bg-orange-100 text-orange-700' },
+  { key: '7gg',         label: '< 7 giorni',          dot: 'bg-yellow-500',  badge: 'bg-yellow-100 text-yellow-700',activeBg: 'bg-yellow-100 text-yellow-700' },
+  { key: '15gg',        label: '< 15 giorni',         dot: 'bg-blue-400',    badge: 'bg-blue-100 text-blue-700',    activeBg: 'bg-blue-100 text-blue-700' },
+  { key: '30gg',        label: '< 30 giorni',         dot: 'bg-blue-300',    badge: 'bg-blue-50 text-blue-600',     activeBg: 'bg-blue-50 text-blue-600' },
 ]
 
 const typeLabels: Record<string, string> = {
   auto: 'Auto', home: 'Casa', life: 'Vita', health: 'Salute', other: 'Altro',
 }
+const MONTH_NAMES = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
 function getDaysLeft(date: string) {
   return Math.ceil((new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
 }
 
 function categorize(daysLeft: number): string {
-  if (daysLeft < 0) return 'scadute'
-  if (daysLeft <= 1) return '1gg'
-  if (daysLeft <= 7) return '7gg'
+  if (daysLeft < -15) return 'scad_oltre'
+  if (daysLeft < -10) return 'scad_10'
+  if (daysLeft < 0)   return 'scad_recenti'
+  if (daysLeft <= 1)  return '1gg'
+  if (daysLeft <= 7)  return '7gg'
   if (daysLeft <= 15) return '15gg'
   return '30gg'
 }
 
 function getUrgencyBorder(days: number) {
-  if (days < 0) return 'border-l-4 border-l-red-500'
-  if (days <= 1) return 'border-l-4 border-l-red-400'
-  if (days <= 7) return 'border-l-4 border-l-orange-500'
-  if (days <= 15) return 'border-l-4 border-l-yellow-400'
-  return 'border-l-4 border-l-blue-300'
+  if (days < -15) return 'border-l-4 border-l-red-900'
+  if (days < -10) return 'border-l-4 border-l-red-700'
+  if (days < 0)   return 'border-l-4 border-l-red-500'
+  if (days <= 1)  return 'border-l-4 border-l-orange-500'
+  if (days <= 7)  return 'border-l-4 border-l-yellow-400'
+  if (days <= 15) return 'border-l-4 border-l-blue-400'
+  return 'border-l-4 border-l-blue-200'
+}
+
+function getDaysChip(days: number) {
+  if (days < -15) return { label: `Scaduta da ${Math.abs(days)} gg`, cls: 'bg-red-900 text-white' }
+  if (days < -10) return { label: `Scaduta da ${Math.abs(days)} gg`, cls: 'bg-red-700 text-white' }
+  if (days < 0)   return { label: `Scaduta da ${Math.abs(days)} gg`, cls: 'bg-red-100 text-red-700' }
+  if (days <= 1)  return { label: '< 1 giorno',                       cls: 'bg-orange-100 text-orange-700' }
+  return           { label: `${days} giorni`,                          cls: days <= 7 ? 'bg-yellow-100 text-yellow-700' : days <= 15 ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600' }
 }
 
 export default function ScadenzePage() {
@@ -45,8 +60,9 @@ export default function ScadenzePage() {
   const [activeTab, setActiveTab] = useState('all')
   const [sentEmail, setSentEmail] = useState<Set<string>>(new Set())
   const [sentWhatsapp, setSentWhatsapp] = useState<Set<string>>(new Set())
+  const [vistaMode, setVistaMode] = useState<'alert' | 'mese'>('alert')
 
-  // Per Mese state
+  // Vista mensile
   const now = new Date()
   const [meseAnno, setMeseAnno] = useState(now.getFullYear())
   const [meseMese, setMeseMese] = useState(now.getMonth() + 1)
@@ -85,110 +101,67 @@ export default function ScadenzePage() {
   }
 
   useEffect(() => { loadAlerts() }, [showDismissed])
-  useEffect(() => { if (activeTab === 'mese') loadMese() }, [activeTab, meseAnno, meseMese])
+  useEffect(() => { if (vistaMode === 'mese') loadMese() }, [vistaMode, meseAnno, meseMese])
 
-  const handleMarkAllRead = async () => {
-    await markAllExpiryAlertsRead()
-    await loadAlerts()
-  }
+  const handleMarkAllRead = async () => { await markAllExpiryAlertsRead(); await loadAlerts() }
+  const handleMarkRead   = async (id: string) => { await markAlertRead(id); await loadAlerts() }
+  const handleDismiss    = async (id: string) => { await dismissAlert(id); await loadAlerts() }
 
-  const handleMarkRead = async (id: string) => {
-    await markAlertRead(id)
-    await loadAlerts()
-  }
-
-  const handleDismiss = async (id: string) => {
-    await dismissAlert(id)
-    await loadAlerts()
-  }
-
-  const MONTH_NAMES = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
-
-  // Categorizza gli alert
   const alertsWithDays = alerts.map(a => ({
     ...a,
     _daysLeft: a.due_date ? getDaysLeft(a.due_date) : 999,
     _category: a.due_date ? categorize(getDaysLeft(a.due_date)) : '30gg',
   }))
 
-  // Conteggi per tab
   const counts: Record<string, number> = { all: alertsWithDays.length }
-  for (const a of alertsWithDays) {
-    counts[a._category] = (counts[a._category] || 0) + 1
-  }
+  for (const a of alertsWithDays) counts[a._category] = (counts[a._category] || 0) + 1
 
-  // Filtra per tab attivo
   const filtered = activeTab === 'all'
     ? alertsWithDays
     : alertsWithDays.filter(a => a._category === activeTab)
 
   const unreadCount = alerts.filter(a => !a.is_read).length
 
-  if (activeTab === 'mese') {
+  // ─── VISTA MENSILE ─────────────────────────────────────────────────────────
+  if (vistaMode === 'mese') {
     return (
       <div>
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Scadenze Polizze</h2>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 mb-5">
-          {TABS.map(tab => {
-            const count = tab.key !== 'mese' ? (counts[tab.key] ?? 0) : mesePolicies.length
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                  activeTab === tab.key
-                    ? `${tab.color} ring-2 ring-offset-1 ring-gray-300`
-                    : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                {tab.label}
-                {count > 0 && tab.key !== 'mese' && (
-                  <span className="min-w-[20px] h-5 flex items-center justify-center rounded-full text-xs font-bold px-1.5 bg-gray-400 text-white">
-                    {count}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+          <button
+            onClick={() => setVistaMode('alert')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+          >
+            ← Vista alert
+          </button>
         </div>
 
         {/* Month picker */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex items-center gap-4">
-          <button
-            onClick={() => {
-              if (meseMese === 1) { setMeseMese(12); setMeseAnno(meseAnno - 1) }
-              else setMeseMese(meseMese - 1)
-            }}
-            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600"
-          >
-            ‹
-          </button>
-          <span className="text-base font-semibold text-gray-900 min-w-[160px] text-center">
-            {MONTH_NAMES[meseMese - 1]} {meseAnno}
-          </span>
-          <button
-            onClick={() => {
-              if (meseMese === 12) { setMeseMese(1); setMeseAnno(meseAnno + 1) }
-              else setMeseMese(meseMese + 1)
-            }}
-            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600"
-          >
-            ›
-          </button>
-          <span className="text-sm text-gray-400">
-            {mesePolicies.length} polizze in scadenza
-          </span>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-5">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => { if (meseMese === 1) { setMeseMese(12); setMeseAnno(meseAnno - 1) } else setMeseMese(meseMese - 1) }}
+              className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 text-lg font-medium transition"
+            >‹</button>
+            <div className="flex-1 text-center">
+              <p className="text-lg font-bold text-gray-900">{MONTH_NAMES[meseMese - 1]} {meseAnno}</p>
+              <p className="text-sm text-gray-400 mt-0.5">
+                {meseLoading ? 'Caricamento...' : `${mesePolicies.length} polizze in scadenza`}
+              </p>
+            </div>
+            <button
+              onClick={() => { if (meseMese === 12) { setMeseMese(1); setMeseAnno(meseAnno + 1) } else setMeseMese(meseMese + 1) }}
+              className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 text-lg font-medium transition"
+            >›</button>
+          </div>
         </div>
 
         {meseLoading ? (
           <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">Caricamento...</div>
         ) : mesePolicies.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-            Nessuna polizza in scadenza in questo mese.
+          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+            <p className="text-gray-400 text-sm">Nessuna polizza in scadenza in {MONTH_NAMES[meseMese - 1]} {meseAnno}.</p>
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
@@ -206,26 +179,23 @@ export default function ScadenzePage() {
               <tbody className="divide-y divide-gray-100">
                 {mesePolicies.map((p: any) => {
                   const daysLeft = getDaysLeft(p.expiry_date)
+                  const chip = getDaysChip(daysLeft)
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{p.client_name}</td>
                       <td className="px-4 py-3 text-gray-600">{typeLabels[p.policy_type] ?? p.policy_type}</td>
-                      <td className="px-4 py-3 text-gray-600">{(p as any).insurance_companies?.name ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-500">{(p as any).insurance_companies?.name ?? '—'}</td>
                       <td className="px-4 py-3">
-                        <span className={`text-sm font-medium ${daysLeft < 0 ? 'text-red-600' : daysLeft <= 7 ? 'text-orange-600' : 'text-gray-700'}`}>
-                          {new Date(p.expiry_date).toLocaleDateString('it-IT')}
-                          {daysLeft < 0 && ' (scaduta)'}
-                          {daysLeft >= 0 && ` (${daysLeft}gg)`}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-700">{new Date(p.expiry_date).toLocaleDateString('it-IT')}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${chip.cls}`}>{chip.label}</span>
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-900">
+                      <td className="px-4 py-3 text-right text-gray-900 font-medium">
                         {(p.premium_amount || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
                       </td>
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/dashboard/policies/${p.id}`}
-                          className="text-xs text-primary-600 hover:underline font-medium"
-                        >
+                      <td className="px-4 py-3 text-right">
+                        <Link href={`/dashboard/policies/${p.id}`} className="text-xs text-primary-600 hover:underline font-medium whitespace-nowrap">
                           Rinnova →
                         </Link>
                       </td>
@@ -240,63 +210,58 @@ export default function ScadenzePage() {
     )
   }
 
+  // ─── VISTA ALERT ───────────────────────────────────────────────────────────
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold text-gray-900">Scadenze Polizze</h2>
           {unreadCount > 0 && (
-            <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-              {unreadCount}
-            </span>
+            <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {unreadCount > 0 && (
-            <button
-              onClick={handleMarkAllRead}
-              className="text-sm text-primary-600 hover:text-primary-800 font-medium"
-            >
+            <button onClick={handleMarkAllRead} className="text-sm text-primary-600 hover:text-primary-800 font-medium">
               Segna tutti come letti
             </button>
           )}
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={showDismissed}
-              onChange={(e) => setShowDismissed(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            Mostra archiviati
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" checked={showDismissed} onChange={e => setShowDismissed(e.target.checked)} className="rounded border-gray-300" />
+            Archiviati
           </label>
+          <button
+            onClick={() => setVistaMode('mese')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+          >
+            📅 Vista mensile
+          </button>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs urgenza */}
       <div className="flex flex-wrap gap-2 mb-5">
-        {TABS.map(tab => {
+        {URGENCY_TABS.map(tab => {
           const count = counts[tab.key] ?? 0
+          const isActive = activeTab === tab.key
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                activeTab === tab.key
-                  ? `${tab.color} ring-2 ring-offset-1 ring-gray-300`
-                  : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                isActive
+                  ? `${tab.activeBg} border-transparent ring-2 ring-offset-1 ring-gray-300`
+                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
               }`}
             >
+              {!isActive && count > 0 && tab.key !== 'all' && (
+                <span className={`w-2 h-2 rounded-full ${tab.dot}`} />
+              )}
               {tab.label}
-              {count > 0 && tab.key !== 'mese' && (
+              {count > 0 && (
                 <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full text-xs font-bold px-1.5 ${
-                  activeTab === tab.key
-                    ? 'bg-white/60 text-inherit'
-                    : tab.key === 'scadute' ? 'bg-red-500 text-white'
-                    : tab.key === '1gg' ? 'bg-red-400 text-white'
-                    : tab.key === '7gg' ? 'bg-orange-500 text-white'
-                    : tab.key === '15gg' ? 'bg-yellow-500 text-white'
-                    : tab.key === '30gg' ? 'bg-blue-500 text-white'
-                    : 'bg-gray-400 text-white'
+                  isActive ? 'bg-black/10' : 'bg-gray-100 text-gray-600'
                 }`}>
                   {count}
                 </span>
@@ -306,97 +271,85 @@ export default function ScadenzePage() {
         })}
       </div>
 
+      {/* Lista alert */}
       {loading ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">Caricamento...</div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-          {activeTab === 'all'
-            ? 'Nessuna polizza in scadenza. Le notifiche appariranno qui quando una polizza si avvicina alla scadenza.'
-            : 'Nessuna polizza in questa categoria.'}
+        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+          <p className="text-gray-400 text-sm">
+            {activeTab === 'all'
+              ? 'Nessuna polizza in scadenza nei prossimi 30 giorni.'
+              : 'Nessuna polizza in questa categoria.'}
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((alert) => (
-            <div
-              key={alert.id}
-              className={`bg-white rounded-xl border p-4 flex items-start gap-4 transition ${
-                !alert.is_read ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
-              } ${alert.is_dismissed ? 'opacity-50' : ''} ${getUrgencyBorder(alert._daysLeft)}`}
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    alert._daysLeft < 0 ? 'bg-red-100 text-red-700' :
-                    alert._daysLeft <= 1 ? 'bg-red-50 text-red-600' :
-                    alert._daysLeft <= 7 ? 'bg-orange-100 text-orange-700' :
-                    alert._daysLeft <= 15 ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-blue-100 text-blue-700'
+        <div className="space-y-2">
+          {filtered.map((alert) => {
+            const chip = getDaysChip(alert._daysLeft)
+            return (
+              <div
+                key={alert.id}
+                className={`bg-white rounded-xl border flex items-start gap-4 p-4 transition ${
+                  !alert.is_read ? 'border-primary-200 bg-primary-50/20' : 'border-gray-200'
+                } ${alert.is_dismissed ? 'opacity-40' : ''} ${getUrgencyBorder(alert._daysLeft)}`}
+              >
+                <div className="flex-1 min-w-0">
+                  {/* Badges riga */}
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${chip.cls}`}>
+                      {chip.label}
+                    </span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                      alert.type === 'payment' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {alert.type === 'payment' ? 'Rata' : 'Polizza'}
+                    </span>
+                    {!alert.is_read && <span className="w-2 h-2 bg-primary-500 rounded-full shrink-0" />}
+                    {alert.policy_id && sentEmail.has(alert.policy_id) && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Email
+                      </span>
+                    )}
+                    {alert.policy_id && sentWhatsapp.has(alert.policy_id) && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> WA
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Titolo e link polizza */}
+                  {alert.policies ? (
+                    <Link href={`/dashboard/policies/${alert.policy_id}`} className="font-medium text-gray-900 text-sm hover:text-primary-600 transition">
+                      {alert.policies.client_name} — {alert.policies.policy_number}
+                    </Link>
+                  ) : (
+                    <p className="font-medium text-gray-900 text-sm">{alert.title}</p>
+                  )}
+
+                  {alert.message && <p className="text-gray-500 text-xs mt-0.5 truncate">{alert.message}</p>}
+
+                  <p className={`text-xs mt-1 font-medium ${
+                    alert._daysLeft < 0 ? 'text-red-500' : alert._daysLeft <= 7 ? 'text-yellow-600' : 'text-gray-400'
                   }`}>
-                    {alert._daysLeft < 0 ? 'Scaduta' :
-                     alert._daysLeft <= 1 ? '< 1 giorno' :
-                     `${alert._daysLeft} giorni`}
-                  </span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                    alert.type === 'payment'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {alert.type === 'payment' ? 'Scadenza Rata' : 'Scadenza Polizza'}
-                  </span>
+                    {new Date(alert.due_date).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1.5 shrink-0 items-end">
                   {!alert.is_read && (
-                    <span className="w-2 h-2 bg-primary-500 rounded-full" />
+                    <button onClick={() => handleMarkRead(alert.id)} className="text-xs text-primary-600 hover:underline whitespace-nowrap">
+                      Segna letto
+                    </button>
                   )}
-                  {alert.policy_id && sentEmail.has(alert.policy_id) && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700" title="Email inviata">
-                      <span className="w-2 h-2 bg-green-500 rounded-full" />
-                      Email
-                    </span>
-                  )}
-                  {alert.policy_id && sentWhatsapp.has(alert.policy_id) && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700" title="WhatsApp inviato">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full" />
-                      WhatsApp
-                    </span>
+                  {!alert.is_dismissed && (
+                    <button onClick={() => handleDismiss(alert.id)} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">
+                      Archivia
+                    </button>
                   )}
                 </div>
-                <h3 className="font-medium text-gray-900 text-sm">{alert.title}</h3>
-                {alert.message && <p className="text-gray-500 text-sm mt-0.5">{alert.message}</p>}
-                {alert.policies && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    <Link href={`/dashboard/policies/${alert.policy_id}`} className="text-primary-600 hover:underline">
-                      Polizza: {alert.policies.policy_number} — {alert.policies.client_name}
-                    </Link>
-                  </p>
-                )}
-                <p className={`text-xs mt-1 ${
-                  alert._daysLeft < 0 ? 'text-red-500 font-medium' :
-                  alert._daysLeft <= 7 ? 'text-yellow-600' : 'text-gray-400'
-                }`}>
-                  Scadenza: {new Date(alert.due_date).toLocaleDateString('it-IT')}
-                  {alert._daysLeft < 0 && ' (scaduta)'}
-                </p>
               </div>
-
-              <div className="flex gap-2 shrink-0">
-                {!alert.is_read && (
-                  <button
-                    onClick={() => handleMarkRead(alert.id)}
-                    className="text-xs text-primary-600 hover:underline"
-                  >
-                    Segna letto
-                  </button>
-                )}
-                {!alert.is_dismissed && (
-                  <button
-                    onClick={() => handleDismiss(alert.id)}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    Archivia
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
