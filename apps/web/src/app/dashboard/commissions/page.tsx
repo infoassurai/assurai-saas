@@ -47,10 +47,13 @@ const policyTypeLabels: Record<string, string> = {
   home: 'Casa',
   life: 'Vita',
   health: 'Salute',
+  previdenza: 'Previdenza',
+  infortuni: 'Infortuni',
+  rc: 'RC',
   other: 'Altro',
 }
 
-const policyTypes = ['auto', 'home', 'life', 'health', 'other']
+const policyTypes = ['auto', 'home', 'life', 'health', 'previdenza', 'infortuni', 'rc', 'other']
 
 export default function CommissionsPage() {
   const { isAdmin } = useProfile()

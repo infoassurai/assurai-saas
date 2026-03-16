@@ -34,6 +34,8 @@ export default function PolicyDetailPage() {
     status: 'active',
     notes: '',
     payment_frequency: '' as string,
+    payment_method: 'contanti',
+    manual_commission_amount: '',
   })
 
   useEffect(() => {
@@ -58,6 +60,8 @@ export default function PolicyDetailPage() {
         status: policy.status,
         notes: policy.notes ?? '',
         payment_frequency: policy.payment_frequency || '',
+        payment_method: (policy as any).payment_method || 'contanti',
+        manual_commission_amount: (policy as any).manual_commission_amount != null ? String((policy as any).manual_commission_amount) : '',
       })
       setLoading(false)
     }).catch((err) => {
@@ -78,11 +82,14 @@ export default function PolicyDetailPage() {
     setSaving(true)
     setError('')
     try {
+      const { manual_commission_amount, ...formRest } = form
       await updatePolicy(id, {
-        ...form,
+        ...formRest,
         premium_amount: parseFloat(form.premium_amount) || 0,
         company_id: form.company_id || null,
         payment_frequency: form.payment_frequency,
+        payment_method: form.payment_method || 'contanti',
+        manual_commission_amount: manual_commission_amount ? parseFloat(manual_commission_amount) : null,
       })
       setEditing(false)
     } catch (err: any) {
@@ -130,6 +137,9 @@ export default function PolicyDetailPage() {
               <option value="home">Casa</option>
               <option value="life">Vita</option>
               <option value="health">Salute</option>
+              <option value="previdenza">Previdenza</option>
+              <option value="infortuni">Infortuni</option>
+              <option value="rc">RC</option>
               <option value="other">Altro</option>
             </select>
           </div>
@@ -203,6 +213,25 @@ export default function PolicyDetailPage() {
                 <option value="expired">Scaduta</option>
                 <option value="cancelled">Annullata</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Modalità Pagamento</label>
+              <select name="payment_method" value={form.payment_method} onChange={handleChange} disabled={!editing} className={inputClass}>
+                <option value="contanti">Contanti</option>
+                <option value="carta">Carta</option>
+                <option value="rid">RID / Domiciliazione</option>
+                <option value="finanziamento">Finanziamento</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Commissione manuale (€)</label>
+              <input name="manual_commission_amount" type="number" step="0.01" min="0"
+                value={form.manual_commission_amount} onChange={handleChange} readOnly={!editing}
+                placeholder="Lascia vuoto per usare il piano provvigionale"
+                className={inputClass} />
+              {!editing && form.manual_commission_amount && (
+                <p className="text-xs text-orange-500 mt-1">Commissione impostata manualmente</p>
+              )}
             </div>
           </div>
         </div>

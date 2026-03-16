@@ -113,6 +113,8 @@ export async function createPolicy(policy: {
   notes?: string
   campaign_code?: string
   payment_frequency?: PaymentFrequency
+  payment_method?: string
+  manual_commission_amount?: number
 }) {
   const supabase = createClient()
   const profile = await getProfile()
@@ -155,15 +157,30 @@ export async function createPolicy(policy: {
   if (data) {
     // Genera alert scadenza se entro 30gg
     createAlertForPolicy(data.id, data.policy_number, data.client_name, data.expiry_date).catch(() => {})
-    // Genera commissione automatica (usa piano provvigionale se disponibile)
-    autoCreateCommission(data.id, data.premium_amount, profile.tenant_id, profile.id, data.company_id, data.policy_type).catch(() => {})
+    // Genera commissione automatica (usa piano provvigionale se disponibile, o commissione manuale)
+    autoCreateCommission(data.id, data.premium_amount, profile.tenant_id, profile.id, data.company_id, data.policy_type, data.manual_commission_amount ?? null).catch(() => {})
   }
 
   return data
 }
 
-async function autoCreateCommission(policyId: string, premiumAmount: number, tenantId: string, agentId: string, companyId?: string, policyType?: string) {
+async function autoCreateCommission(policyId: string, premiumAmount: number, tenantId: string, agentId: string, companyId?: string, policyType?: string, manualCommissionAmount?: number | null) {
   const supabase = createClient()
+
+  // Se è presente una commissione manuale, usala direttamente senza calcolare dal piano
+  if (manualCommissionAmount != null && manualCommissionAmount > 0) {
+    await supabase.from('commissions').insert({
+      tenant_id: tenantId,
+      policy_id: policyId,
+      agent_id: agentId,
+      amount: manualCommissionAmount,
+      percentage: null,
+      type: 'initial',
+      status: 'pending',
+      commission_role: 'agent',
+    })
+    return
+  }
 
   // Cerca piano provvigionale specifico per compagnia + tipo (piano agente principale)
   let mainRate = 10 // default fallback
@@ -253,7 +270,7 @@ async function autoCreateCommission(policyId: string, premiumAmount: number, ten
       .eq('id', companyId)
       .single()
 
-    const typeLabels: Record<string, string> = { auto: 'Auto', home: 'Casa', life: 'Vita', health: 'Salute', other: 'Altro' }
+    const typeLabels: Record<string, string> = { auto: 'Auto', home: 'Casa', life: 'Vita', health: 'Salute', other: 'Altro', previdenza: 'Previdenza', infortuni: 'Infortuni', rc: 'RC' }
     const typeName = typeLabels[policyType ?? ''] ?? policyType
     const companyName = company?.name ?? 'Sconosciuta'
 

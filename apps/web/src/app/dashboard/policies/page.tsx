@@ -25,6 +25,9 @@ const typeLabels: Record<string, string> = {
   home: 'Casa',
   life: 'Vita',
   health: 'Salute',
+  previdenza: 'Previdenza',
+  infortuni: 'Infortuni',
+  rc: 'RC',
   other: 'Altro',
 }
 
@@ -272,6 +275,9 @@ export default function PoliciesPage() {
             <option value="home">Casa</option>
             <option value="life">Vita</option>
             <option value="health">Salute</option>
+            <option value="previdenza">Previdenza</option>
+            <option value="infortuni">Infortuni</option>
+            <option value="rc">RC</option>
             <option value="other">Altro</option>
           </select>
         </div>

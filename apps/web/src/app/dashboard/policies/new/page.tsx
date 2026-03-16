@@ -38,6 +38,9 @@ function NewPolicyForm() {
     notes: '',
     campaign_code: '',
     payment_frequency: '' as string,
+    payment_method: 'contanti',
+    manual_commission_amount: '',
+    policy_duration: '1y',
   })
 
   useEffect(() => {
@@ -68,10 +71,30 @@ function NewPolicyForm() {
           notes: '',
           campaign_code: '',
           payment_frequency: policy.payment_frequency || '',
+          payment_method: (policy as any).payment_method || 'contanti',
+          manual_commission_amount: '',
+          policy_duration: '1y',
         })
       }).catch(console.error)
     }
   }, [renewId])
+
+  // Calcola automaticamente data scadenza da data decorrenza + durata
+  useEffect(() => {
+    if (!form.effective_date || form.policy_duration === 'personalizzata') return
+    const base = new Date(form.effective_date)
+    const durations: Record<string, () => Date> = {
+      '1m':  () => { const d = new Date(base); d.setMonth(d.getMonth() + 1); return d },
+      '3m':  () => { const d = new Date(base); d.setMonth(d.getMonth() + 3); return d },
+      '6m':  () => { const d = new Date(base); d.setMonth(d.getMonth() + 6); return d },
+      '1y':  () => { const d = new Date(base); d.setFullYear(d.getFullYear() + 1); return d },
+      '2y':  () => { const d = new Date(base); d.setFullYear(d.getFullYear() + 2); return d },
+    }
+    const calc = durations[form.policy_duration]
+    if (calc) {
+      setForm((f) => ({ ...f, expiry_date: calc().toISOString().split('T')[0] }))
+    }
+  }, [form.effective_date, form.policy_duration])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -80,12 +103,15 @@ function NewPolicyForm() {
   const savePolicy = async () => {
     setLoading(true)
     try {
+      const { policy_duration, manual_commission_amount, ...formRest } = form
       await createPolicy({
-        ...form,
+        ...formRest,
         premium_amount: parseFloat(form.premium_amount) || 0,
         company_id: form.company_id || undefined,
         campaign_code: form.campaign_code || undefined,
         payment_frequency: form.payment_frequency as PaymentFrequency,
+        payment_method: form.payment_method || 'contanti',
+        manual_commission_amount: manual_commission_amount ? parseFloat(manual_commission_amount) : undefined,
       })
       router.push('/dashboard/policies')
     } catch (err: any) {
@@ -160,6 +186,9 @@ function NewPolicyForm() {
               <option value="home">Casa</option>
               <option value="life">Vita</option>
               <option value="health">Salute</option>
+              <option value="previdenza">Previdenza</option>
+              <option value="infortuni">Infortuni</option>
+              <option value="rc">RC</option>
               <option value="other">Altro</option>
             </select>
           </div>
@@ -215,6 +244,18 @@ function NewPolicyForm() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Durata</label>
+              <select name="policy_duration" value={form.policy_duration} onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
+                <option value="1m">1 mese</option>
+                <option value="3m">3 mesi</option>
+                <option value="6m">6 mesi</option>
+                <option value="1y">1 anno</option>
+                <option value="2y">2 anni</option>
+                <option value="personalizzata">Personalizzata</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Data Scadenza *</label>
               <input name="expiry_date" type="date" required value={form.expiry_date} onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
@@ -244,6 +285,24 @@ function NewPolicyForm() {
                 <option value="active">Attiva</option>
                 <option value="pending">In attesa</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Modalità Pagamento</label>
+              <select name="payment_method" value={form.payment_method} onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none">
+                <option value="contanti">Contanti</option>
+                <option value="carta">Carta</option>
+                <option value="rid">RID / Domiciliazione</option>
+                <option value="finanziamento">Finanziamento</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Commissione manuale (€)</label>
+              <input name="manual_commission_amount" type="number" step="0.01" min="0"
+                value={form.manual_commission_amount} onChange={handleChange}
+                placeholder="Lascia vuoto per usare il piano provvigionale"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none" />
+              <p className="text-xs text-gray-400 mt-1">Se inserita, sovrascrive il calcolo automatico da piano provvigionale</p>
             </div>
           </div>
         </div>

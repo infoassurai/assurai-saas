@@ -51,9 +51,10 @@ export interface InsuranceCompany {
 // ============================================
 // Policy (polizza)
 // ============================================
-export type PolicyType = 'auto' | 'home' | 'life' | 'health' | 'other';
+export type PolicyType = 'auto' | 'home' | 'life' | 'health' | 'other' | 'previdenza' | 'infortuni' | 'rc';
 export type PolicyStatus = 'active' | 'expired' | 'pending' | 'cancelled';
 export type PolicySource = 'manual' | 'ocr' | 'api';
+export type PaymentMethod = 'contanti' | 'carta' | 'rid' | 'finanziamento';
 
 export interface Policy {
   id: string;
@@ -70,6 +71,8 @@ export interface Policy {
   clientFiscalCode?: string;
 
   premiumAmount: number;
+  paymentMethod?: PaymentMethod;
+  manualCommissionAmount?: number;
 
   effectiveDate: Date;
   expiryDate: Date;

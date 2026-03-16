@@ -27,6 +27,17 @@ export const POLICY_TYPES = [
   'life',
   'health',
   'other',
+  'previdenza',
+  'infortuni',
+  'rc',
+];
+
+// Payment Methods
+export const PAYMENT_METHODS: { value: string; label: string }[] = [
+  { value: 'contanti', label: 'Contanti' },
+  { value: 'carta', label: 'Carta' },
+  { value: 'rid', label: 'RID / Domiciliazione' },
+  { value: 'finanziamento', label: 'Finanziamento' },
 ];
 
 // API Routes
